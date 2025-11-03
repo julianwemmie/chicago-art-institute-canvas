@@ -52,7 +52,7 @@ export default function App() {
             date: item.date_display || 'Date unknown',
             medium: item.medium_display || 'Medium unknown',
             imageId: item.image_id,
-            thumbnail: buildImageUrl(item.image_id, 300),
+            thumbnail: buildImageUrl(item.image_id, 400),
             large: buildImageUrl(item.image_id, 800),
             thumbnailWidth,
             thumbnailHeight,
