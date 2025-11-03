@@ -200,13 +200,19 @@ body {
 }
 
 .modal__image--full {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  z-index: 0;
 }
 
 .modal__image--preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   transform: none;
   transition: opacity 220ms ease;
+  z-index: 1;
+  pointer-events: none;
 }
 
 .modal__image--preview-hidden {
