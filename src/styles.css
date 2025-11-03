@@ -205,11 +205,14 @@ body {
 }
 
 .modal__image--preview {
-  transition: opacity 220ms ease;
+  filter: blur(8px);
+  transform: scale(1.01);
+  transition: opacity 220ms ease, filter 220ms ease;
 }
 
 .modal__image--preview-hidden {
   opacity: 0;
+  filter: blur(0);
 }
 
 .modal__image--visible {

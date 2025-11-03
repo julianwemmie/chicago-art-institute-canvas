@@ -46,16 +46,10 @@ export default function ArtworkModal({ artwork, onClose }) {
             style={aspectRatio ? { aspectRatio } : undefined}
           >
             <img
-              className={[
-                'modal__image',
-                'modal__image--preview',
-                isImageLoaded ? 'modal__image--preview-hidden' : 'modal__image--visible',
-              ].join(' ')}
+              className={`modal__image modal__image--preview${isImageLoaded ? ' modal__image--preview-hidden' : ' modal__image--visible'}`}
               src={artwork.thumbnail}
               alt=""
               aria-hidden="true"
-              width={artwork?.thumbnailWidth || undefined}
-              height={artwork?.thumbnailHeight || undefined}
             />
             <img
               className={`modal__image modal__image--full${isImageLoaded ? ' modal__image--visible' : ''}`}
