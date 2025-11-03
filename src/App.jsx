@@ -59,7 +59,23 @@ export default function App() {
           };
         });
 
-      setArtworks((prev) => [...prev, ...nextArtworks]);
+      setArtworks((prev) => {
+        const existingIds = new Set(prev.map((item) => item.id));
+        const uniqueNextArtworks = [];
+
+        for (const artwork of nextArtworks) {
+          if (!existingIds.has(artwork.id)) {
+            existingIds.add(artwork.id);
+            uniqueNextArtworks.push(artwork);
+          }
+        }
+
+        if (uniqueNextArtworks.length === 0) {
+          return prev;
+        }
+
+        return [...prev, ...uniqueNextArtworks];
+      });
       setHasMore(Boolean(data.pagination?.next_url));
       setPage((prev) => prev + 1);
     } catch (err) {
