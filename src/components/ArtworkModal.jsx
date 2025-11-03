@@ -1,11 +1,15 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 
 export default function ArtworkModal({ artwork, onClose }) {
+  const [isImageLoaded, setImageLoaded] = useState(false);
+
   useEffect(() => {
     if (!artwork) {
       return undefined;
     }
+
+    setImageLoaded(false);
 
     const onKeyUp = (event) => {
       if (event.key === 'Escape') {
@@ -29,7 +33,18 @@ export default function ArtworkModal({ artwork, onClose }) {
           ×
         </button>
         <figure className="modal__body">
-          <img className="modal__image" src={artwork.large} alt={artwork.title} />
+          <div
+            className={`modal__media${isImageLoaded ? ' modal__media--loaded' : ''}`}
+          >
+            {!isImageLoaded && <div className="modal__image-placeholder" aria-hidden="true" />}
+            <img
+              className={`modal__image${isImageLoaded ? ' modal__image--visible' : ''}`}
+              src={artwork.large}
+              alt={artwork.title}
+              onLoad={() => setImageLoaded(true)}
+              onError={() => setImageLoaded(true)}
+            />
+          </div>
           <figcaption className="modal__details">
             <h2>{artwork.title}</h2>
             <p>{artwork.artist}</p>
