@@ -3,14 +3,6 @@ import PropTypes from 'prop-types';
 
 export default function ArtworkModal({ artwork, onClose }) {
   const [isImageLoaded, setImageLoaded] = useState(false);
-  const aspectRatio =
-    artwork &&
-    typeof artwork.thumbnailWidth === 'number' &&
-    typeof artwork.thumbnailHeight === 'number' &&
-    artwork.thumbnailWidth > 0 &&
-    artwork.thumbnailHeight > 0
-      ? `${artwork.thumbnailWidth} / ${artwork.thumbnailHeight}`
-      : undefined;
 
   useEffect(() => {
     if (!artwork) {
@@ -43,7 +35,6 @@ export default function ArtworkModal({ artwork, onClose }) {
         <figure className="modal__body">
           <div
             className={`modal__media${isImageLoaded ? ' modal__media--loaded' : ''}`}
-            style={aspectRatio ? { aspectRatio } : undefined}
           >
             <img
               className={`modal__image modal__image--preview${isImageLoaded ? ' modal__image--preview-hidden' : ' modal__image--visible'}`}

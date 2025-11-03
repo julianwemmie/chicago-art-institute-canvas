@@ -194,7 +194,6 @@ body {
   max-height: min(70vh, 720px);
   border-radius: 0.85rem;
   object-fit: contain;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
   opacity: 0;
   transition: opacity 220ms ease;
 }
