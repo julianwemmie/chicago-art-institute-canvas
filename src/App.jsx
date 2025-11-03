@@ -41,16 +41,23 @@ export default function App() {
       const data = await response.json();
       const nextArtworks = data.data
         .filter((item) => item.image_id)
-        .map((item) => ({
-          id: item.id,
-          title: item.title,
-          artist: item.artist_display || 'Unknown Artist',
-          date: item.date_display || 'Date unknown',
-          medium: item.medium_display || 'Medium unknown',
-          imageId: item.image_id,
-          thumbnail: buildImageUrl(item.image_id, 300),
-          large: buildImageUrl(item.image_id, 800),
-        }));
+        .map((item) => {
+          const thumbnailWidth = item.thumbnail?.width ?? null;
+          const thumbnailHeight = item.thumbnail?.height ?? null;
+
+          return {
+            id: item.id,
+            title: item.title,
+            artist: item.artist_display || 'Unknown Artist',
+            date: item.date_display || 'Date unknown',
+            medium: item.medium_display || 'Medium unknown',
+            imageId: item.image_id,
+            thumbnail: buildImageUrl(item.image_id, 300),
+            large: buildImageUrl(item.image_id, 800),
+            thumbnailWidth,
+            thumbnailHeight,
+          };
+        });
 
       setArtworks((prev) => [...prev, ...nextArtworks]);
       setHasMore(Boolean(data.pagination?.next_url));
