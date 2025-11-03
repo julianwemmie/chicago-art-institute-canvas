@@ -1,10 +1,17 @@
 import PropTypes from 'prop-types';
 
 function ArtworkTile({ artwork, onSelect }) {
+  const { thumbnailWidth, thumbnailHeight } = artwork;
+  const aspectRatio =
+    typeof thumbnailWidth === 'number' && typeof thumbnailHeight === 'number' && thumbnailWidth > 0 && thumbnailHeight > 0
+      ? `${thumbnailWidth} / ${thumbnailHeight}`
+      : undefined;
+
   return (
     <button
       type="button"
       className="artwork-tile"
+      style={aspectRatio ? { aspectRatio } : undefined}
       onClick={() => onSelect(artwork)}
     >
       <img
@@ -26,6 +33,8 @@ ArtworkTile.propTypes = {
     title: PropTypes.string.isRequired,
     artist: PropTypes.string.isRequired,
     thumbnail: PropTypes.string,
+    thumbnailWidth: PropTypes.number,
+    thumbnailHeight: PropTypes.number,
   }).isRequired,
   onSelect: PropTypes.func.isRequired,
 };
