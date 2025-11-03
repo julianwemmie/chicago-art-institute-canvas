@@ -1,0 +1,188 @@
+:root {
+  color-scheme: light dark;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: #111;
+  color: #f2f2f2;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.app {
+  padding: 1.5rem clamp(1rem, 4vw, 3rem) 4rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.app__header {
+  margin-bottom: 1.5rem;
+}
+
+.app__header h1 {
+  margin: 0 0 0.5rem;
+  font-size: clamp(2rem, 4vw, 3rem);
+}
+
+.app__header p {
+  margin: 0;
+  color: #cfcfcf;
+}
+
+.artwork-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.artwork-tile {
+  position: relative;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: none;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  aspect-ratio: 1 / 1;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.artwork-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  filter: saturate(0.85);
+}
+
+.artwork-tile__overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: end;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
+  padding: 0.75rem;
+  color: #f5f5f5;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.artwork-tile h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.artwork-tile p {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  color: #d0d0d0;
+}
+
+.artwork-tile:focus-visible,
+.artwork-tile:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+}
+
+.artwork-tile:focus-visible .artwork-tile__overlay,
+.artwork-tile:hover .artwork-tile__overlay {
+  opacity: 1;
+}
+
+.status {
+  text-align: center;
+  margin: 2rem 0;
+  color: #d8d8d8;
+}
+
+.status--error {
+  color: #ff8080;
+}
+
+.status__details {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.sentinel {
+  width: 100%;
+  height: 1px;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 10;
+}
+
+.modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.modal__content {
+  position: relative;
+  background: #1b1b1b;
+  max-width: min(90vw, 900px);
+  max-height: 90vh;
+  overflow: auto;
+  border-radius: 1rem;
+  padding: 1rem;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+}
+
+.modal__close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  border: none;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 1.5rem;
+  line-height: 1;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.modal figure {
+  margin: 0;
+}
+
+.modal img {
+  width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+}
+
+.modal figcaption {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.modal h2 {
+  margin: 0;
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+}
+
+.modal p {
+  margin: 0;
+  color: #d5d5d5;
+}
+
+@media (max-width: 600px) {
+  .app {
+    padding: 1rem;
+  }
+
+  .artwork-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+}
