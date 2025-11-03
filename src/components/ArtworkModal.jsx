@@ -33,6 +33,8 @@ export default function ArtworkModal({ artwork, onClose }) {
     return null;
   }
 
+  const shouldLockAspect = !isImageLoaded && aspectRatio;
+
   return (
     <div className="modal" role="dialog" aria-modal="true">
       <div className="modal__backdrop" onClick={onClose} aria-hidden="true" />
@@ -43,7 +45,7 @@ export default function ArtworkModal({ artwork, onClose }) {
         <figure className="modal__body">
           <div
             className={`modal__media${isImageLoaded ? ' modal__media--loaded' : ''}`}
-            style={aspectRatio ? { aspectRatio } : undefined}
+            style={shouldLockAspect ? { aspectRatio } : undefined}
           >
             <img
               className={`modal__image modal__image--preview${isImageLoaded ? ' modal__image--preview-hidden' : ' modal__image--visible'}`}
