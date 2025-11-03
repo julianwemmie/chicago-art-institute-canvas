@@ -125,12 +125,16 @@ body {
   display: grid;
   place-items: center;
   z-index: 10;
+  opacity: 0;
+  animation: modal-fade-in 180ms ease forwards;
 }
 
 .modal__backdrop {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.65);
+  opacity: 0;
+  animation: modal-backdrop-fade-in 200ms ease forwards;
 }
 
 .modal__content {
@@ -143,6 +147,9 @@ body {
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
   display: grid;
   overflow: hidden;
+  opacity: 0;
+  transform: translateY(12px) scale(0.985);
+  animation: modal-content-in 220ms ease forwards;
 }
 
 .modal__close {
@@ -171,6 +178,11 @@ body {
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
 }
 
+.modal__media {
+  position: relative;
+  min-height: clamp(220px, 40vh, 480px);
+}
+
 .modal__image {
   width: 100%;
   height: auto;
@@ -178,6 +190,32 @@ body {
   border-radius: 0.85rem;
   object-fit: contain;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  display: block;
+}
+
+.modal__image--full {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-height: min(70vh, 720px);
+  transition: opacity 220ms ease;
+  opacity: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.modal__image--visible {
+  opacity: 1;
+}
+
+.modal__image--preview {
+  transition: opacity 200ms ease;
+  z-index: 0;
+}
+
+.modal__image--preview-hidden {
+  opacity: 0;
 }
 
 .modal__details {
@@ -198,6 +236,38 @@ body {
 .modal p {
   margin: 0;
   color: #d5d5d5;
+}
+
+@keyframes modal-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-backdrop-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-content-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.975);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @media (max-width: 600px) {
