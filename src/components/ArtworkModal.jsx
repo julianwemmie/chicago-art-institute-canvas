@@ -28,9 +28,9 @@ export default function ArtworkModal({ artwork, onClose }) {
         <button type="button" className="modal__close" onClick={onClose}>
           ×
         </button>
-        <figure>
-          <img src={artwork.large} alt={artwork.title} />
-          <figcaption>
+        <figure className="modal__body">
+          <img className="modal__image" src={artwork.large} alt={artwork.title} />
+          <figcaption className="modal__details">
             <h2>{artwork.title}</h2>
             <p>{artwork.artist}</p>
             <p>{artwork.date}</p>
