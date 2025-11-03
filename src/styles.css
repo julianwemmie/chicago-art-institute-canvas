@@ -187,6 +187,10 @@ body {
   min-height: auto;
 }
 
+.modal__media--aspect-locked {
+  min-height: auto;
+}
+
 .modal__image {
   display: block;
   width: 100%;
