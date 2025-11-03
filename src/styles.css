@@ -187,28 +187,8 @@ body {
   min-height: auto;
 }
 
-.modal__image-placeholder {
-  position: absolute;
-  inset: 0;
-  border-radius: 0.85rem;
-  background: linear-gradient(
-    115deg,
-    rgba(255, 255, 255, 0.08) 0%,
-    rgba(255, 255, 255, 0.18) 40%,
-    rgba(255, 255, 255, 0.08) 100%
-  );
-  background-size: 200% 100%;
-  animation: modal-image-loading 1.2s ease-in-out infinite;
-  filter: saturate(0);
-  transition: opacity 180ms ease;
-  pointer-events: none;
-}
-
-.modal__media--loaded .modal__image-placeholder {
-  opacity: 0;
-}
-
 .modal__image {
+  display: block;
   width: 100%;
   height: auto;
   max-height: min(70vh, 720px);
@@ -217,6 +197,22 @@ body {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
   opacity: 0;
   transition: opacity 220ms ease;
+}
+
+.modal__image--full {
+  position: absolute;
+  inset: 0;
+}
+
+.modal__image--preview {
+  filter: blur(8px);
+  transform: scale(1.01);
+  transition: opacity 220ms ease, filter 220ms ease;
+}
+
+.modal__image--preview-hidden {
+  opacity: 0;
+  filter: blur(0);
 }
 
 .modal__image--visible {

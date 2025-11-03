@@ -36,9 +36,14 @@ export default function ArtworkModal({ artwork, onClose }) {
           <div
             className={`modal__media${isImageLoaded ? ' modal__media--loaded' : ''}`}
           >
-            {!isImageLoaded && <div className="modal__image-placeholder" aria-hidden="true" />}
             <img
-              className={`modal__image${isImageLoaded ? ' modal__image--visible' : ''}`}
+              className={`modal__image modal__image--preview${isImageLoaded ? ' modal__image--preview-hidden' : ' modal__image--visible'}`}
+              src={artwork.thumbnail}
+              alt=""
+              aria-hidden="true"
+            />
+            <img
+              className={`modal__image modal__image--full${isImageLoaded ? ' modal__image--visible' : ''}`}
               src={artwork.large}
               alt={artwork.title}
               onLoad={() => setImageLoaded(true)}
