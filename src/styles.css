@@ -31,9 +31,14 @@ body {
 }
 
 .artwork-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 0.75rem;
+  column-width: clamp(220px, 22vw, 320px);
+  column-gap: 0.75rem;
+  column-fill: balance;
+}
+
+.artwork-grid > * {
+  break-inside: avoid;
+  margin-bottom: 0.75rem;
 }
 
 .artwork-tile {
@@ -46,6 +51,9 @@ body {
   border-radius: 0.75rem;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   transition: transform 150ms ease, box-shadow 150ms ease;
+  display: block;
+  width: 100%;
+  text-align: left;
 }
 
 .artwork-tile img {
@@ -182,6 +190,8 @@ body {
   }
 
   .artwork-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    column-width: auto;
+    column-count: 1;
+    column-gap: 0;
   }
 }
