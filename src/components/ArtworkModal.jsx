@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 
+const deriveAspectRatio = (width, height) =>
+  typeof width === 'number' &&
+  typeof height === 'number' &&
+  width > 0 &&
+  height > 0
+    ? `${width} / ${height}`
+    : undefined;
+
 export default function ArtworkModal({ artwork, onClose }) {
   const [isImageLoaded, setImageLoaded] = useState(false);
-  const aspectRatio =
-    artwork &&
-    typeof artwork.thumbnailWidth === 'number' &&
-    typeof artwork.thumbnailHeight === 'number' &&
-    artwork.thumbnailWidth > 0 &&
-    artwork.thumbnailHeight > 0
-      ? `${artwork.thumbnailWidth} / ${artwork.thumbnailHeight}`
-      : undefined;
+  const [placeholderAspectRatio, setPlaceholderAspectRatio] = useState();
 
   useEffect(() => {
     if (!artwork) {
@@ -18,6 +19,9 @@ export default function ArtworkModal({ artwork, onClose }) {
     }
 
     setImageLoaded(false);
+    setPlaceholderAspectRatio(
+      deriveAspectRatio(artwork.thumbnailWidth, artwork.thumbnailHeight)
+    );
 
     const onKeyUp = (event) => {
       if (event.key === 'Escape') {
@@ -33,6 +37,27 @@ export default function ArtworkModal({ artwork, onClose }) {
     return null;
   }
 
+  const handlePreviewLoad = (event) => {
+    const { naturalWidth, naturalHeight } = event.currentTarget || {};
+
+    if (!naturalWidth || !naturalHeight) {
+      return;
+    }
+
+    const nextAspectRatio = deriveAspectRatio(naturalWidth, naturalHeight);
+
+    setPlaceholderAspectRatio((prev) => nextAspectRatio || prev);
+  };
+
+  const shouldLockAspect = !isImageLoaded && placeholderAspectRatio;
+  const mediaClassName = [
+    'modal__media',
+    isImageLoaded && 'modal__media--loaded',
+    shouldLockAspect && 'modal__media--aspect-locked',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <div className="modal" role="dialog" aria-modal="true">
       <div className="modal__backdrop" onClick={onClose} aria-hidden="true" />
@@ -42,14 +67,17 @@ export default function ArtworkModal({ artwork, onClose }) {
         </button>
         <figure className="modal__body">
           <div
-            className={`modal__media${isImageLoaded ? ' modal__media--loaded' : ''}`}
-            style={aspectRatio ? { aspectRatio } : undefined}
+            className={mediaClassName}
+            style={shouldLockAspect ? { aspectRatio: placeholderAspectRatio } : undefined}
           >
             <img
               className={`modal__image modal__image--preview${isImageLoaded ? ' modal__image--preview-hidden' : ' modal__image--visible'}`}
               src={artwork.thumbnail}
               alt=""
               aria-hidden="true"
+              width={artwork?.thumbnailWidth || undefined}
+              height={artwork?.thumbnailHeight || undefined}
+              onLoad={handlePreviewLoad}
             />
             <img
               className={`modal__image modal__image--full${isImageLoaded ? ' modal__image--visible' : ''}`}
