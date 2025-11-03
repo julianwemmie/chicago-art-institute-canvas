@@ -68,7 +68,8 @@ body {
   position: absolute;
   inset: 0;
   display: grid;
-  place-content: end;
+  align-content: end;
+  justify-items: start;
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
   padding: 0.75rem;
   color: #f5f5f5;
