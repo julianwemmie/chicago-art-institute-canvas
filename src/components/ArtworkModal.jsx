@@ -58,6 +58,8 @@ export default function ArtworkModal({ artwork, onClose }) {
     return null;
   }
 
+  const hasFullImage = Boolean(preloadedSrc);
+
   return (
     <div className="modal" role="dialog" aria-modal="true">
       <div className="modal__backdrop" onClick={onClose} aria-hidden="true" />
@@ -71,7 +73,7 @@ export default function ArtworkModal({ artwork, onClose }) {
           >
             {/* Preview thumbnail stays in the flow to reserve layout and sits beneath the full image. */}
             <img
-              className={`modal__image modal__image--preview${isImageLoaded ? ' modal__image--preview-hidden' : ' modal__image--visible'}`}
+              className={`modal__image modal__image--preview${hasFullImage && isImageLoaded ? ' modal__image--preview-hidden' : ' modal__image--visible'}`}
               src={artwork.thumbnail}
               alt=""
               aria-hidden="true"
@@ -80,7 +82,7 @@ export default function ArtworkModal({ artwork, onClose }) {
             />
 
             {/* Render the full image only after it's been preloaded to avoid flicker. */}
-            {preloadedSrc && (
+            {hasFullImage && (
               <img
                 className={`modal__image modal__image--full${isImageLoaded ? ' modal__image--visible' : ''}`}
                 src={preloadedSrc}
