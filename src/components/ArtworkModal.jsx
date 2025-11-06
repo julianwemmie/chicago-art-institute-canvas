@@ -71,29 +71,24 @@ export default function ArtworkModal({ artwork, onClose }) {
           <div
             className={`modal__media${isImageLoaded ? ' modal__media--loaded' : ''}`}
           >
-            {/* Preview thumbnail stays in the flow to reserve layout and sits beneath the full image. */}
+            {!hasFullImage ? 
             <img
-              className={`modal__image modal__image--preview${hasFullImage && isImageLoaded ? ' modal__image--preview-hidden' : ' modal__image--visible'}`}
+              className={`modal__image`}
               src={artwork.thumbnail}
               alt=""
               aria-hidden="true"
-              width={artwork?.thumbnailWidth || undefined}
               height={artwork?.thumbnailHeight || undefined}
-            />
-
-            {/* Render the full image only after it's been preloaded to avoid flicker. */}
-            {hasFullImage && (
-              <img
+            /> : 
+            <img
                 className={`modal__image modal__image--full${isImageLoaded ? ' modal__image--visible' : ''}`}
                 src={preloadedSrc}
                 alt={artwork.title}
-                width={artwork?.thumbnailWidth || undefined}
                 height={artwork?.thumbnailHeight || undefined}
                 // onLoad is redundant due to preloading, but keep for safety
                 onLoad={() => setImageLoaded(true)}
                 onError={() => setImageLoaded(true)}
               />
-            )}
+          }
           </div>
           <figcaption className="modal__details">
             <h2>{artwork.title}</h2>
