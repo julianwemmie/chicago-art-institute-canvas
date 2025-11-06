@@ -172,49 +172,17 @@ body {
 }
 
 .modal__body {
-  display: grid;
-  gap: clamp(1.25rem, 3vw, 2rem);
-  align-items: start;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-}
-
-.modal__media {
-  position: relative;
-  min-height: clamp(220px, 40vh, 480px);
-}
-
-.modal__media--loaded {
-  min-height: auto;
+  display: flex;
+  gap: 1em;
 }
 
 .modal__image {
   display: block;
-  width: 100%;
-  height: auto;
-  max-height: min(70vh, 720px);
+  max-height: 70vh;
   border-radius: 0.85rem;
   object-fit: contain;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
-  opacity: 0;
   transition: opacity 220ms ease;
-}
-
-.modal__image--full {
-  position: absolute;
-  inset: 0;
-}
-
-.modal__image--preview {
-  transform: none;
-  transition: opacity 220ms ease;
-}
-
-.modal__image--preview-hidden {
-  opacity: 0;
-}
-
-.modal__image--visible {
-  opacity: 1;
+  margin: auto
 }
 
 .modal__details {

@@ -3,21 +3,36 @@ import PropTypes from 'prop-types';
 
 export default function ArtworkModal({ artwork, onClose }) {
   const [isImageLoaded, setImageLoaded] = useState(false);
-  const aspectRatio =
-    artwork &&
-    typeof artwork.thumbnailWidth === 'number' &&
-    typeof artwork.thumbnailHeight === 'number' &&
-    artwork.thumbnailWidth > 0 &&
-    artwork.thumbnailHeight > 0
-      ? `${artwork.thumbnailWidth} / ${artwork.thumbnailHeight}`
-      : undefined;
+  const [preloadedSrc, setPreloadedSrc] = useState(null);
 
   useEffect(() => {
     if (!artwork) {
       return undefined;
     }
 
+    // reset states for the new artwork
     setImageLoaded(false);
+    setPreloadedSrc(null);
+
+    // Preload the high-res image off-DOM to avoid flicker / blank paint
+    const img = new Image();
+    // prefer async decoding if supported
+    try {
+      img.decoding = 'async';
+    } catch (e) {
+      // ignore if not supported
+    }
+    img.src = artwork.large;
+    img.onload = () => {
+      // only set the preloaded src after the image is fully decoded/loaded
+      setPreloadedSrc(artwork.large);
+      setImageLoaded(true);
+    };
+    img.onerror = () => {
+      // treat errors as loaded so the UI can fall back / hide the preview
+      setPreloadedSrc(null);
+      setImageLoaded(true);
+    };
 
     const onKeyUp = (event) => {
       if (event.key === 'Escape') {
@@ -26,12 +41,24 @@ export default function ArtworkModal({ artwork, onClose }) {
     };
 
     document.addEventListener('keyup', onKeyUp);
-    return () => document.removeEventListener('keyup', onKeyUp);
+    return () => {
+      document.removeEventListener('keyup', onKeyUp);
+      // Cleanup image loading handlers to avoid leaks
+      img.onload = null;
+      img.onerror = null;
+      try {
+        img.src = '';
+      } catch (e) {
+        // noop
+      }
+    };
   }, [artwork, onClose]);
 
   if (!artwork) {
     return null;
   }
+
+  const hasFullImage = Boolean(preloadedSrc);
 
   return (
     <div className="modal" role="dialog" aria-modal="true">
@@ -43,23 +70,25 @@ export default function ArtworkModal({ artwork, onClose }) {
         <figure className="modal__body">
           <div
             className={`modal__media${isImageLoaded ? ' modal__media--loaded' : ''}`}
-            style={aspectRatio ? { aspectRatio } : undefined}
           >
+            {!hasFullImage ? 
             <img
-              className={`modal__image modal__image--preview${isImageLoaded ? ' modal__image--preview-hidden' : ' modal__image--visible'}`}
+              className={`modal__image`}
               src={artwork.thumbnail}
               alt=""
               aria-hidden="true"
-            />
-            <img
-              className={`modal__image modal__image--full${isImageLoaded ? ' modal__image--visible' : ''}`}
-              src={artwork.large}
-              alt={artwork.title}
-              width={artwork?.thumbnailWidth || undefined}
               height={artwork?.thumbnailHeight || undefined}
-              onLoad={() => setImageLoaded(true)}
-              onError={() => setImageLoaded(true)}
-            />
+            /> : 
+            <img
+                className={`modal__image modal__image--full${isImageLoaded ? ' modal__image--visible' : ''}`}
+                src={preloadedSrc}
+                alt={artwork.title}
+                height={artwork?.thumbnailHeight || undefined}
+                // onLoad is redundant due to preloading, but keep for safety
+                onLoad={() => setImageLoaded(true)}
+                onError={() => setImageLoaded(true)}
+              />
+          }
           </div>
           <figcaption className="modal__details">
             <h2>{artwork.title}</h2>
