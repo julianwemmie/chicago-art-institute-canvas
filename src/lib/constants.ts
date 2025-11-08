@@ -1,0 +1,9 @@
+export const TILE_SIZE = 256;
+export const SECTOR_SIZE = 16;
+export const MAX_SECTORS = 200;
+export const PREFETCH_SECTORS = 2;
+export const ORIGIN_INDEX = 500_000;
+export const GRID_DIMENSION = 1_000_000;
+export const GLOBAL_SEED = 0x1f4b5;
+export const IIIF_IMAGE_SIZE = '400,';
+export const FETCH_DEBOUNCE_MS = 300;
