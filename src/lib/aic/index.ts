@@ -37,6 +37,25 @@ export interface ArtworksPageResult {
   iiifBase: string | null;
 }
 
+function extractPageFromUrl(url: string | null | undefined): number | null {
+  if (!url) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(url);
+    const page = parsed.searchParams.get('page');
+    if (!page) {
+      return null;
+    }
+
+    const parsedNumber = Number(page);
+    return Number.isFinite(parsedNumber) ? parsedNumber : null;
+  } catch {
+    return null;
+  }
+}
+
 export function buildIiifImageUrl(
   iiifBase: string,
   imageId: string,
@@ -69,8 +88,13 @@ export async function fetchArtworksPage(page: number): Promise<ArtworksPageResul
     }));
 
   const pagination = payload.pagination;
-  const hasMore = Boolean(pagination && pagination.current_page < pagination.total_pages);
-  const nextPage = hasMore && pagination ? pagination.current_page + 1 : null;
+  const currentPage = pagination?.current_page ?? 0;
+  const totalPages = pagination?.total_pages ?? 0;
+  const nextPageFromUrl = extractPageFromUrl(pagination?.next_url ?? null);
+  const hasMore = Boolean(pagination?.next_url) || currentPage < totalPages;
+  const nextPage = hasMore
+    ? nextPageFromUrl ?? (pagination ? currentPage + 1 : null)
+    : null;
 
   return {
     artworks,

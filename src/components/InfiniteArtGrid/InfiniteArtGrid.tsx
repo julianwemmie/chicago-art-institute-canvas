@@ -211,9 +211,14 @@ export function InfiniteArtGrid() {
       const sectorStartY = worldToSectorCoordinate(paddedRowStart);
       const sectorEndY = worldToSectorCoordinate(paddedRowEnd);
 
+      let createdNewSector = false;
+
       for (let sy = sectorStartY; sy <= sectorEndY; sy += 1) {
         for (let sx = sectorStartX; sx <= sectorEndX; sx += 1) {
           const { sector, isNew } = store.getOrCreate(sx, sy);
+          if (isNew) {
+            createdNewSector = true;
+          }
           if (artworkCount > 0 && (isNew || sector.tiles.some((tile) => tile.state === 'empty'))) {
             populateSector(sector, artworkCount);
           }
@@ -223,6 +228,8 @@ export function InfiniteArtGrid() {
       store.evictIfNeeded();
 
       const bounds = store.getBounds();
+      let shouldFetchMore = createdNewSector;
+
       if (bounds) {
         const visibleSectorStartX = worldToSectorCoordinate(worldColStart);
         const visibleSectorEndX = worldToSectorCoordinate(worldColEnd);
@@ -234,9 +241,11 @@ export function InfiniteArtGrid() {
         const nearTop = visibleSectorStartY <= bounds.minSy + Math.max(1, PREFETCH_SECTORS);
         const nearBottom = visibleSectorEndY >= bounds.maxSy - Math.max(1, PREFETCH_SECTORS);
 
-        if ((nearLeft || nearRight || nearTop || nearBottom) && hasMore) {
-          scheduleNextPage();
-        }
+        shouldFetchMore ||= nearLeft || nearRight || nearTop || nearBottom;
+      }
+
+      if (shouldFetchMore && hasMore) {
+        scheduleNextPage();
       }
     },
     [artworks.length, hasMore, populateSector, scheduleNextPage]
