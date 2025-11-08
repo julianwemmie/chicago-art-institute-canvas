@@ -36,6 +36,7 @@ export function InfiniteArtGrid() {
   const requestedPages = useRef(new Set<number>());
   const debounceRef = useRef<number | null>(null);
   const hasScrolledRef = useRef(false);
+  const lastRenderRef = useRef<GridOnItemsRenderedProps | null>(null);
 
   const [artworks, setArtworks] = useState<ArtworkRef[]>([]);
   const [iiifBase, setIiifBase] = useState<string | null>(null);
@@ -179,13 +180,19 @@ export function InfiniteArtGrid() {
     }
   }, [artworks.length, populateSector]);
 
-  const handleItemsRendered = useCallback(
+  const processVisibleRange = useCallback(
     ({
       visibleColumnStart,
       visibleColumnStop,
       visibleRowStart,
       visibleRowStop,
     }: GridOnItemsRenderedProps) => {
+      lastRenderRef.current = {
+        visibleColumnStart,
+        visibleColumnStop,
+        visibleRowStart,
+        visibleRowStop,
+      };
       const store = storeRef.current;
       const artworkCount = artworks.length;
 
@@ -234,6 +241,25 @@ export function InfiniteArtGrid() {
     },
     [artworks.length, hasMore, populateSector, scheduleNextPage]
   );
+
+  const handleItemsRendered = useCallback(
+    (range: GridOnItemsRenderedProps) => {
+      processVisibleRange(range);
+    },
+    [processVisibleRange]
+  );
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    if (!lastRenderRef.current) {
+      return;
+    }
+
+    processVisibleRange(lastRenderRef.current);
+  }, [loading, processVisibleRange]);
 
   const cellContext = useMemo<GridCellContext>(
     () => ({
