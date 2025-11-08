@@ -5,19 +5,33 @@
   color: #f2f2f2;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+}
+
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: 100%;
+  overflow: hidden;
+  background-color: #111;
+  color: #f2f2f2;
 }
 
 .app {
-  padding: 1.5rem clamp(1rem, 4vw, 3rem) 4rem;
-  max-width: 1200px;
-  margin: 0 auto;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 
 .app__header {
-  margin-bottom: 1.5rem;
+  margin: 0;
+  max-width: min(520px, 42vw);
 }
 
 .app__header h1 {
@@ -30,15 +44,67 @@ body {
   color: #cfcfcf;
 }
 
+.app__chrome {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(1.25rem, 4vw, 3rem);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.app__status-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: auto;
+  max-width: min(420px, 60vw);
+}
+
+.app__header,
+.app__status-stack > * {
+  pointer-events: auto;
+}
+
+.artwork-viewport {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 0;
+  border: none;
+  background: radial-gradient(circle at top, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.9));
+  box-shadow: none;
+}
+
+.artwork-viewport__frame {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  background: #050505;
+}
+
+.artwork-viewport__frame--dragging {
+  cursor: grabbing;
+}
+
 .artwork-grid {
-  column-width: clamp(220px, 22vw, 320px);
-  column-gap: 0.75rem;
-  column-fill: balance;
+  position: relative;
+  min-height: 3rem;
+  width: 100%;
+  will-change: height, transform;
 }
 
 .artwork-grid > * {
-  break-inside: avoid;
-  margin-bottom: 0.75rem;
+  margin: 0;
 }
 
 .artwork-tile {
@@ -100,9 +166,12 @@ body {
 }
 
 .status {
-  text-align: center;
-  margin: 2rem 0;
+  margin: 0;
   color: #d8d8d8;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }
 
 .status--error {

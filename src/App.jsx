@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ArtworkGrid from './components/ArtworkGrid.jsx';
 import ArtworkModal from './components/ArtworkModal.jsx';
 
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 60;
 const API_URL = 'https://api.artic.edu/api/v1/artworks';
 const FIELDS = ['id', 'title', 'image_id', 'artist_display', 'date_display', 'thumbnail', 'medium_display'];
 
@@ -11,26 +11,26 @@ const buildImageUrl = (imageId, size = 400) =>
 
 export default function App() {
   const [artworks, setArtworks] = useState([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
-  const observerTarget = useRef(null);
+  const didLoadRef = useRef(false);
 
   const fetchArtworks = useCallback(async () => {
-    if (loading || !hasMore) {
+    if (loading || didLoadRef.current) {
       return;
     }
 
+    didLoadRef.current = true;
     setLoading(true);
     setError(null);
 
     try {
       const url = new URL(API_URL);
-      url.searchParams.set('page', page);
+      // @ts-ignore
       url.searchParams.set('limit', PAGE_SIZE);
       url.searchParams.set('fields', FIELDS.join(','));
+      url.searchParams.set('page', '1');
 
       const response = await fetch(url);
 
@@ -76,87 +76,54 @@ export default function App() {
 
         return [...prev, ...uniqueNextArtworks];
       });
-      setHasMore(Boolean(data.pagination?.next_url));
-      setPage((prev) => prev + 1);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [page, loading, hasMore]);
+  }, [loading]);
 
   useEffect(() => {
     fetchArtworks();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const [entry] = entries;
-        if (entry.isIntersecting) {
-          fetchArtworks();
-        }
-      },
-      {
-        rootMargin: '200px',
-      }
-    );
-
-    const target = observerTarget.current;
-    if (target) {
-      observer.observe(target);
-    }
-
-    return () => {
-      if (target) {
-        observer.unobserve(target);
-      }
-      observer.disconnect();
-    };
   }, [fetchArtworks]);
 
-  const content = useMemo(() => {
-    if (error) {
-      return (
-        <div className="status status--error">
-          <p>There was a problem loading artwork. Please try again.</p>
-          <p className="status__details">{error}</p>
-        </div>
-      );
-    }
+  const showEmptyState = !loading && !error && artworks.length === 0;
+  const showError = Boolean(error);
 
-    if (!loading && artworks.length === 0) {
-      return (
-        <div className="status">
-          <p>No artwork found right now. Please try again later.</p>
-        </div>
-      );
-    }
-
-    return (
+  return (
+    <div className="app">
       <ArtworkGrid
         artworks={artworks}
         onSelect={(artwork) => setSelected(artwork)}
       />
-    );
-  }, [artworks, error, loading]);
 
-  return (
-    <div className="app">
-      <header className="app__header">
-        <h1>Art Institute Explorer</h1>
-        <p>Scroll through an endless wall of art and tap a tile for details.</p>
-      </header>
+      <div className="app__chrome" aria-live="polite" aria-atomic="true">
+        <header className="app__header">
+          <h1>Art Institute Explorer</h1>
+          <p>Scroll through an endless wall of art and tap a tile for details.</p>
+        </header>
 
-      {content}
+        <div className="app__status-stack">
+          {showError && (
+            <div className="status status--error">
+              <p>There was a problem loading artwork. Please try again.</p>
+              <p className="status__details">{error}</p>
+            </div>
+          )}
 
-      <div ref={observerTarget} className="sentinel" aria-hidden="true" />
+          {showEmptyState && (
+            <div className="status">
+              <p>No artwork found right now. Please try again later.</p>
+            </div>
+          )}
 
-      {loading && (
-        <div className="status">
-          <p>Loading more artwork…</p>
+          {loading && (
+            <div className="status">
+              <p>Loading more artwork…</p>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       <ArtworkModal
         artwork={selected}

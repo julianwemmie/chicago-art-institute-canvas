@@ -1,29 +1,154 @@
-# Art Institute Explorer — Agents Guide
+1. File/update issues for remaining work
 
-## Project snapshot
-- React + Vite single-page app that loads artwork from the Art Institute of Chicago API (`https://api.artic.edu/api/v1/artworks`).
-- Infinite scrolling grid of thumbnail tiles; selecting a tile opens a modal with richer artwork details and a higher resolution image.
-- State includes `artworks`, pagination (`page`, `hasMore`), fetch status flags (`loading`, `error`), and the currently `selected` artwork.
+    Agents should proactively create issues for discovered bugs, TODOs, and follow-up tasks
+    Close completed issues and update status for in-progress work
 
-## Anatomy of the UI
-- `src/App.jsx`: bootstraps data fetching, manages pagination + intersection observer, renders the header, grid, loading/error states, and modal.
-- `src/components/ArtworkGrid.jsx`: renders a responsive grid of buttons; each button shows a thumbnail and forwards selection events.
-- `src/components/ArtworkModal.jsx`: modal dialog that preloads the hi-res image, falls back to the thumbnail, and shows title/artist/date/medium.
-- `src/styles.css`: global styles for layout (grid, modal, typography, animations).
-- `src/main.jsx`: Vite entry point that mounts `<App />` and imports styles.
+2. Run quality gates (if applicable)
 
-## Data + behavior
-- Fetch batches of 30 items (`PAGE_SIZE`) and request only the fields listed in `FIELDS`.
-- Filters out artworks without `image_id` to avoid blank tiles.
-- Deduplicates items client-side to guard against API overlaps.
-- Infinite scroll driven by an `IntersectionObserver` tied to a sentinel div at the bottom of the page.
-- Modal listens for `Escape` key, click on backdrop, and cleans up event listeners + image preloads on unmount.
+    Tests, linters, builds - only if code changes were made
+    File P0 issues if builds are broken
 
-## Running locally
-- `npm install` then `npm run dev`; Vite serves at `http://localhost:5173`.
-- Additional scripts: `npm run build` (production bundle) and `npm run preview` (serve built assets).
+3. Sync the issue tracker carefully
 
-## Notes for future agents
-- `buildImageUrl(imageId, size)` centralizes IIIF image URLs; pass `size=800` for large modal images.
-- Consider API rate limits; guard additional changes with throttling/backoff if needed.
-- Styling assumes modern browsers; any accessibility changes should keep focus trapping in mind for the modal.
+    Work methodically to ensure local and remote issues merge safely
+    Handle git conflicts thoughtfully (sometimes accepting remote and re-importing)
+    Goal: clean reconciliation where no issues are lost
+
+4. Verify clean state
+
+    All changes committed and pushed
+    No untracked files remain
+
+5. Choose next work
+
+    Provide a formatted prompt for the next session with context
+
+## Issue Tracking with bd (beads)
+
+**IMPORTANT**: This project uses **bd (beads)** for ALL issue tracking. Do NOT use markdown TODOs, task lists, or other tracking methods.
+
+### Why bd?
+
+- Dependency-aware: Track blockers and relationships between issues
+- Git-friendly: Auto-syncs to JSONL for version control
+- Agent-optimized: JSON output, ready work detection, discovered-from links
+- Prevents duplicate tracking systems and confusion
+
+### Quick Start
+
+**Check for ready work:**
+```bash
+bd ready --json
+```
+
+**Create new issues:**
+```bash
+bd create "Issue title" -t bug|feature|task -p 0-4 --json
+bd create "Issue title" -p 1 --deps discovered-from:bd-123 --json
+```
+
+**Claim and update:**
+```bash
+bd update bd-42 --status in_progress --json
+bd update bd-42 --priority 1 --json
+```
+
+**Complete work:**
+```bash
+bd close bd-42 --reason "Completed" --json
+```
+
+### Issue Types
+
+- `bug` - Something broken
+- `feature` - New functionality
+- `task` - Work item (tests, docs, refactoring)
+- `epic` - Large feature with subtasks
+- `chore` - Maintenance (dependencies, tooling)
+
+### Priorities
+
+- `0` - Critical (security, data loss, broken builds)
+- `1` - High (major features, important bugs)
+- `2` - Medium (default, nice-to-have)
+- `3` - Low (polish, optimization)
+- `4` - Backlog (future ideas)
+
+### Workflow for AI Agents
+
+1. **Check ready work**: `bd ready` shows unblocked issues
+2. **Claim your task**: `bd update <id> --status in_progress`
+3. **Work on it**: Implement, test, document
+4. **Discover new work?** Create linked issue:
+   - `bd create "Found bug" -p 1 --deps discovered-from:<parent-id>`
+5. **Complete**: `bd close <id> --reason "Done"`
+6. **Commit together**: Always commit the `.beads/issues.jsonl` file together with the code changes so issue state stays in sync with code state
+
+### Auto-Sync
+
+bd automatically syncs with git:
+- Exports to `.beads/issues.jsonl` after changes (5s debounce)
+- Imports from JSONL when newer (e.g., after `git pull`)
+- No manual export/import needed!
+
+### MCP Server (Recommended)
+
+If using Claude or MCP-compatible clients, install the beads MCP server:
+
+```bash
+pip install beads-mcp
+```
+
+Add to MCP config (e.g., `~/.config/claude/config.json`):
+```json
+{
+  "beads": {
+    "command": "beads-mcp",
+    "args": []
+  }
+}
+```
+
+Then use `mcp__beads__*` functions instead of CLI commands.
+
+### Managing AI-Generated Planning Documents
+
+AI assistants often create planning and design documents during development:
+- PLAN.md, IMPLEMENTATION.md, ARCHITECTURE.md
+- DESIGN.md, CODEBASE_SUMMARY.md, INTEGRATION_PLAN.md
+- TESTING_GUIDE.md, TECHNICAL_DESIGN.md, and similar files
+
+**Best Practice: Use a dedicated directory for these ephemeral files**
+
+**Recommended approach:**
+- Create a `history/` directory in the project root
+- Store ALL AI-generated planning/design docs in `history/`
+- Keep the repository root clean and focused on permanent project files
+- Only access `history/` when explicitly asked to review past planning
+
+**Example .gitignore entry (optional):**
+```
+# AI planning documents (ephemeral)
+history/
+```
+
+**Benefits:**
+- ✅ Clean repository root
+- ✅ Clear separation between ephemeral and permanent documentation
+- ✅ Easy to exclude from version control if desired
+- ✅ Preserves planning history for archeological research
+- ✅ Reduces noise when browsing the project
+
+### Important Rules
+
+- ✅ Use bd for ALL task tracking
+- ✅ Always use `--json` flag for programmatic use
+- ✅ Link discovered work with `discovered-from` dependencies
+- ✅ Check `bd ready` before asking "what should I work on?"
+- ✅ Store AI planning docs in `history/` directory
+- ❌ Do NOT create markdown TODO lists
+- ❌ Do NOT use external issue trackers
+- ❌ Do NOT duplicate tracking systems
+- ❌ Do NOT clutter repo root with planning documents
+
+For more details, see README.md and QUICKSTART.md.
