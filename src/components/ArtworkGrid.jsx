@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
-import { initMasonry } from '../lib/masonry.js';
 
-const COLUMN_WIDTH = 280;
-const GUTTER_X = 12;
-const GUTTER_Y = 12;
-const TARGET_COLUMNS = 8;
-const BOARD_MULTIPLIER = 1.6;
+const TILE_WIDTH = 320;
+const TILE_GAP = 24;
+const BOARD_CELLS = 120;
+const BOARD_UNIT = TILE_WIDTH + TILE_GAP;
+const BOARD_WIDTH = BOARD_CELLS * BOARD_UNIT;
+const BOARD_HEIGHT = BOARD_CELLS * BOARD_UNIT;
+const BOARD_CENTER_X = BOARD_WIDTH / 2;
+const BOARD_CENTER_Y = BOARD_HEIGHT / 2;
 const DRAG_THRESHOLD_PX = 4;
+const VISIBLE_BUFFER = 600;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
-
-const widthForColumns = (columns) =>
-  columns * COLUMN_WIDTH + Math.max(0, columns - 1) * GUTTER_X;
 
 function useElementSize(ref) {
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -58,7 +58,7 @@ function useElementSize(ref) {
   return size;
 }
 
-function ArtworkTile({ artwork, onSelect }) {
+function ArtworkTile({ artwork, onSelect, style }) {
   const aspectRatio =
     artwork.thumbnailWidth && artwork.thumbnailHeight
       ? `${artwork.thumbnailWidth}/${artwork.thumbnailHeight}`
@@ -68,8 +68,11 @@ function ArtworkTile({ artwork, onSelect }) {
     <button
       type="button"
       className="artwork-tile"
-      onClick={() => {onSelect(artwork)}}
+      onClick={() => {
+        onSelect(artwork);
+      }}
       data-aspect={aspectRatio}
+      style={style}
     >
       <img
         src={artwork.thumbnail}
@@ -95,12 +98,16 @@ ArtworkTile.propTypes = {
     thumbnailHeight: PropTypes.number,
   }).isRequired,
   onSelect: PropTypes.func.isRequired,
+  style: PropTypes.object,
 };
 
-export default function ArtworkGrid({ artworks, onSelect }) {
+ArtworkTile.defaultProps = {
+  style: undefined,
+};
+
+export default function ArtworkGrid({ placements, onSelect }) {
   const viewportRef = useRef(null);
-  const containerRef = useRef(null);
-  const masonryRef = useRef(null);
+  const hasCenteredRef = useRef(false);
   const dragRef = useRef({
     active: false,
     pointerId: null,
@@ -115,66 +122,114 @@ export default function ArtworkGrid({ artworks, onSelect }) {
   const offsetRef = useRef({ x: 0, y: 0 });
 
   const viewportSize = useElementSize(viewportRef);
-  const contentSize = useElementSize(containerRef);
 
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-
-  const gridWidth = useMemo(() => {
-    const baseWidth = widthForColumns(TARGET_COLUMNS);
-    const scaledWidth =
-      viewportSize.width > 0 ? Math.round(viewportSize.width * BOARD_MULTIPLIER) : 0;
-    return Math.max(baseWidth, scaledWidth || baseWidth);
-  }, [viewportSize.width]);
 
   useEffect(() => {
     offsetRef.current = offset;
   }, [offset]);
 
-  useEffect(() => {
-    if (!containerRef.current) {
-      return undefined;
+  const placementBounds = useMemo(() => {
+    if (!placements.length) {
+      return null;
     }
 
-    const controller = initMasonry({
-      container: containerRef.current,
-      itemSelector: '.artwork-tile',
-      columnWidth: COLUMN_WIDTH,
-      gutterX: GUTTER_X,
-      gutterY: GUTTER_Y,
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    placements.forEach((placement) => {
+      const width = placement.width ?? TILE_WIDTH;
+      const height = placement.height ?? TILE_WIDTH;
+      const x = placement.x ?? 0;
+      const y = placement.y ?? 0;
+
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + width);
+      maxY = Math.max(maxY, y + height);
     });
 
-    masonryRef.current = controller;
+    const width = Math.max(1, maxX - minX);
+    const height = Math.max(1, maxY - minY);
 
-    return () => {
-      controller.destroyMasonry();
-      masonryRef.current = null;
+    return {
+      minX,
+      minY,
+      maxX,
+      maxY,
+      width,
+      height,
     };
-  }, []);
+  }, [placements]);
 
-  useEffect(() => {
-    if (masonryRef.current) {
-      masonryRef.current.relayout();
+  const boardAlignment = useMemo(() => {
+    if (!placementBounds) {
+      return { offsetX: BOARD_CENTER_X, offsetY: BOARD_CENTER_Y };
     }
-  }, [artworks, gridWidth]);
+
+    const contentCenterX = placementBounds.minX + placementBounds.width / 2;
+    const contentCenterY = placementBounds.minY + placementBounds.height / 2;
+
+    return {
+      offsetX: BOARD_CENTER_X - contentCenterX,
+      offsetY: BOARD_CENTER_Y - contentCenterY,
+    };
+  }, [placementBounds]);
+
+  const resolvedPlacements = useMemo(
+    () =>
+      placements.map((placement) => {
+        const width = placement.width ?? TILE_WIDTH;
+        const height = placement.height ?? TILE_WIDTH;
+        const x = placement.x ?? 0;
+        const y = placement.y ?? 0;
+
+        return {
+          ...placement,
+          width,
+          height,
+          boardX: x + boardAlignment.offsetX,
+          boardY: y + boardAlignment.offsetY,
+        };
+      }),
+    [placements, boardAlignment.offsetX, boardAlignment.offsetY]
+  );
 
   const clampPan = useCallback(
     (nextX, nextY) => {
       const maxX = 0;
       const maxY = 0;
-      const minX = Math.min(0, viewportSize.width - contentSize.width);
-      const minY = Math.min(0, viewportSize.height - contentSize.height);
+      const minX = Math.min(0, viewportSize.width - BOARD_WIDTH);
+      const minY = Math.min(0, viewportSize.height - BOARD_HEIGHT);
       return {
         x: clamp(nextX, minX, maxX),
         y: clamp(nextY, minY, maxY),
       };
     },
-    [viewportSize.width, viewportSize.height, contentSize.width, contentSize.height]
+    [viewportSize.width, viewportSize.height]
   );
 
   useEffect(() => {
     setOffset((current) => clampPan(current.x, current.y));
   }, [clampPan]);
+
+  useEffect(() => {
+    if (
+      hasCenteredRef.current ||
+      !viewportSize.width ||
+      !viewportSize.height
+    ) {
+      return;
+    }
+
+    hasCenteredRef.current = true;
+    const centeredX = (viewportSize.width - BOARD_WIDTH) / 2;
+    const centeredY = (viewportSize.height - BOARD_HEIGHT) / 2;
+    setOffset(clampPan(centeredX, centeredY));
+  }, [viewportSize.width, viewportSize.height, clampPan]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -292,6 +347,51 @@ export default function ArtworkGrid({ artworks, onSelect }) {
     [clampPan]
   );
 
+  const viewBounds = useMemo(() => {
+    const left = -offset.x;
+    const top = -offset.y;
+    const right = left + viewportSize.width;
+    const bottom = top + viewportSize.height;
+    return { left, top, right, bottom };
+  }, [offset.x, offset.y, viewportSize.width, viewportSize.height]);
+
+  const visiblePlacements = useMemo(() => {
+    if (!viewportSize.width || !viewportSize.height) {
+      return [];
+    }
+
+    const buffer = VISIBLE_BUFFER;
+    const extended = {
+      left: viewBounds.left - buffer,
+      right: viewBounds.right + buffer,
+      top: viewBounds.top - buffer,
+      bottom: viewBounds.bottom + buffer,
+    };
+
+    return resolvedPlacements
+      .map((placement) => {
+        const tileBounds = {
+          left: placement.boardX,
+          top: placement.boardY,
+          right: placement.boardX + placement.width,
+          bottom: placement.boardY + placement.height,
+        };
+
+        const intersects =
+          tileBounds.right >= extended.left &&
+          tileBounds.left <= extended.right &&
+          tileBounds.bottom >= extended.top &&
+          tileBounds.top <= extended.bottom;
+
+        if (!intersects) {
+          return null;
+        }
+
+        return placement;
+      })
+      .filter(Boolean);
+  }, [resolvedPlacements, viewBounds, viewportSize.height, viewportSize.width]);
+
   const frameClassName = [
     'artwork-viewport__frame',
     isDragging ? 'artwork-viewport__frame--dragging' : null,
@@ -313,19 +413,25 @@ export default function ArtworkGrid({ artworks, onSelect }) {
         aria-label="Artwork viewport"
       >
         <section
-          ref={containerRef}
           className="artwork-grid"
           aria-live="polite"
           style={{
-            width: `${gridWidth}px`,
+            width: `${BOARD_WIDTH}px`,
+            height: `${BOARD_HEIGHT}px`,
             transform: `translate3d(${offset.x}px, ${offset.y}px, 0)`,
           }}
         >
-          {artworks.map((artwork) => (
+          {visiblePlacements.map((placement) => (
             <ArtworkTile
-              key={artwork.id}
-              artwork={artwork}
+              key={placement.id}
+              artwork={placement.artwork}
               onSelect={onSelect}
+              style={{
+                width: `${placement.width}px`,
+                height: `${placement.height}px`,
+                position: 'absolute',
+                transform: `translate3d(${placement.boardX}px, ${placement.boardY}px, 0)`,
+              }}
             />
           ))}
         </section>
@@ -335,9 +441,21 @@ export default function ArtworkGrid({ artworks, onSelect }) {
 }
 
 ArtworkGrid.propTypes = {
-  artworks: PropTypes.arrayOf(
+  placements: PropTypes.arrayOf(
     PropTypes.shape({
-      id: PropTypes.number.isRequired,
+      id: PropTypes.string.isRequired,
+      x: PropTypes.number,
+      y: PropTypes.number,
+      width: PropTypes.number,
+      height: PropTypes.number,
+      artwork: PropTypes.shape({
+        id: PropTypes.number.isRequired,
+        title: PropTypes.string.isRequired,
+        artist: PropTypes.string.isRequired,
+        thumbnail: PropTypes.string,
+        thumbnailWidth: PropTypes.number,
+        thumbnailHeight: PropTypes.number,
+      }).isRequired,
     })
   ).isRequired,
   onSelect: PropTypes.func.isRequired,

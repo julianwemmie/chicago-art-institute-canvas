@@ -1,27 +1,72 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import ArtworkGrid from './components/ArtworkGrid.jsx';
 import ArtworkModal from './components/ArtworkModal.jsx';
 
-const PAGE_SIZE = 60;
+const PAGE_SIZE = 12;
+const COLUMN_WIDTH = 320;
+const COLUMN_GAP = 24;
+const ROW_GAP = 24;
+const MIN_TILE_HEIGHT = 180;
+const MAX_TILE_HEIGHT = 520;
+const MAX_COLUMNS = 6;
+const MIN_COLUMNS = 3;
 const API_URL = 'https://api.artic.edu/api/v1/artworks';
 const FIELDS = ['id', 'title', 'image_id', 'artist_display', 'date_display', 'thumbnail', 'medium_display'];
 
 const buildImageUrl = (imageId, size = 400) =>
   imageId ? `https://www.artic.edu/iiif/2/${imageId}/full/${size},/0/default.jpg` : null;
 
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+function buildDeterministicPlacements(artworks) {
+  if (!artworks.length) {
+    return [];
+  }
+
+  const columns = clamp(Math.round(Math.sqrt(artworks.length)), MIN_COLUMNS, MAX_COLUMNS);
+  const columnHeights = new Array(columns).fill(0);
+  const strideX = COLUMN_WIDTH + COLUMN_GAP;
+
+  return artworks.map((artwork, index) => {
+    const ratio =
+      artwork.thumbnailHeight && artwork.thumbnailWidth
+        ? artwork.thumbnailHeight / artwork.thumbnailWidth
+        : 4 / 5;
+    const tileHeight = clamp(Math.round(COLUMN_WIDTH * ratio), MIN_TILE_HEIGHT, MAX_TILE_HEIGHT);
+
+    let targetColumn = 0;
+    let lowest = columnHeights[0];
+    for (let col = 1; col < columns; col += 1) {
+      if (columnHeights[col] < lowest) {
+        lowest = columnHeights[col];
+        targetColumn = col;
+      }
+    }
+
+    const x = targetColumn * strideX;
+    const y = columnHeights[targetColumn];
+
+    columnHeights[targetColumn] += tileHeight + ROW_GAP;
+
+    return {
+      id: `${artwork.id}-${index}`,
+      artwork,
+      width: COLUMN_WIDTH,
+      height: tileHeight,
+      x,
+      y,
+      column: targetColumn,
+    };
+  });
+}
+
 export default function App() {
   const [artworks, setArtworks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
-  const didLoadRef = useRef(false);
 
   const fetchArtworks = useCallback(async () => {
-    if (loading || didLoadRef.current) {
-      return;
-    }
-
-    didLoadRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -59,33 +104,19 @@ export default function App() {
           };
         });
 
-      setArtworks((prev) => {
-        const existingIds = new Set(prev.map((item) => item.id));
-        const uniqueNextArtworks = [];
-
-        for (const artwork of nextArtworks) {
-          if (!existingIds.has(artwork.id)) {
-            existingIds.add(artwork.id);
-            uniqueNextArtworks.push(artwork);
-          }
-        }
-
-        if (uniqueNextArtworks.length === 0) {
-          return prev;
-        }
-
-        return [...prev, ...uniqueNextArtworks];
-      });
+      setArtworks(nextArtworks.slice(0, PAGE_SIZE));
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [loading]);
+  }, []);
 
   useEffect(() => {
     fetchArtworks();
   }, [fetchArtworks]);
+
+  const placements = useMemo(() => buildDeterministicPlacements(artworks), [artworks]);
 
   const showEmptyState = !loading && !error && artworks.length === 0;
   const showError = Boolean(error);
@@ -93,7 +124,7 @@ export default function App() {
   return (
     <div className="app">
       <ArtworkGrid
-        artworks={artworks}
+        placements={placements}
         onSelect={(artwork) => setSelected(artwork)}
       />
 

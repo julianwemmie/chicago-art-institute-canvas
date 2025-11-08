@@ -364,7 +364,16 @@ function createInstance(config) {
 
     items.forEach((item) => {
       const height = measurements.get(item) ?? 0;
-      const targetColumn = findShortestColumn(columnHeights);
+      const assignedColumnRaw = item.dataset?.masonryColumn;
+      const parsedColumn = Number(assignedColumnRaw);
+      const hasLockedColumn =
+        Number.isInteger(parsedColumn) && parsedColumn >= 0 && parsedColumn < columnCount;
+      let targetColumn = hasLockedColumn ? parsedColumn : findShortestColumn(columnHeights);
+
+      if (!hasLockedColumn) {
+        item.dataset.masonryColumn = String(targetColumn);
+      }
+
       const baseY = columnHeights[targetColumn];
       const y = baseY === 0 ? 0 : baseY + config.gutterY;
       const x = xPositions[targetColumn];
