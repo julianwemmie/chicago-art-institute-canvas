@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import ArtworkGrid from './components/ArtworkGrid.jsx';
+import ArtworkCanvas from './components/ArtworkCanvas.jsx';
 import ArtworkModal from './components/ArtworkModal.jsx';
 
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 60;
 const API_URL = 'https://api.artic.edu/api/v1/artworks';
 const FIELDS = ['id', 'title', 'image_id', 'artist_display', 'date_display', 'thumbnail', 'medium_display'];
 
@@ -11,157 +11,152 @@ const buildImageUrl = (imageId, size = 400) =>
 
 export default function App() {
   const [artworks, setArtworks] = useState([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [requestedIndex, setRequestedIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
   const [selected, setSelected] = useState(null);
-  const observerTarget = useRef(null);
 
-  const fetchArtworks = useCallback(async () => {
-    if (loading || !hasMore) {
+  const pageRef = useRef(1);
+  const totalRef = useRef(null);
+  const loadingPageRef = useRef(false);
+  const seenIds = useRef(new Set());
+
+  const fetchNextPage = useCallback(async () => {
+    if (loadingPageRef.current || !hasMore) {
       return;
     }
 
+    loadingPageRef.current = true;
     setLoading(true);
     setError(null);
 
     try {
       const url = new URL(API_URL);
-      url.searchParams.set('page', page);
-      url.searchParams.set('limit', PAGE_SIZE);
+      url.searchParams.set('page', pageRef.current.toString());
+      url.searchParams.set('limit', PAGE_SIZE.toString());
       url.searchParams.set('fields', FIELDS.join(','));
 
       const response = await fetch(url);
-
       if (!response.ok) {
         throw new Error(`Request failed: ${response.status}`);
       }
 
-      const data = await response.json();
-      const nextArtworks = data.data
+      const payload = await response.json();
+      const items = (payload.data || [])
         .filter((item) => item.image_id)
-        .map((item) => {
-          const thumbnailWidth = item.thumbnail?.width ?? null;
-          const thumbnailHeight = item.thumbnail?.height ?? null;
-
-          return {
-            id: item.id,
-            title: item.title,
-            artist: item.artist_display || 'Unknown Artist',
-            date: item.date_display || 'Date unknown',
-            medium: item.medium_display || 'Medium unknown',
-            imageId: item.image_id,
-            thumbnail: buildImageUrl(item.image_id, 400),
-            large: buildImageUrl(item.image_id, 800),
-            thumbnailWidth,
-            thumbnailHeight,
-          };
+        .map((item) => ({
+          id: item.id,
+          title: item.title,
+          artist: item.artist_display || 'Unknown Artist',
+          date: item.date_display || 'Date unknown',
+          medium: item.medium_display || 'Medium unknown',
+          imageId: item.image_id,
+          thumbnail: buildImageUrl(item.image_id, 400),
+          large: buildImageUrl(item.image_id, 900),
+          thumbnailWidth: item.thumbnail?.width ?? null,
+          thumbnailHeight: item.thumbnail?.height ?? null,
+        }))
+        .filter((item) => {
+          if (seenIds.current.has(item.id)) {
+            return false;
+          }
+          seenIds.current.add(item.id);
+          return true;
         });
 
-      setArtworks((prev) => {
-        const existingIds = new Set(prev.map((item) => item.id));
-        const uniqueNextArtworks = [];
+      if (payload.pagination?.total && !totalRef.current) {
+        totalRef.current = payload.pagination.total;
+      }
 
-        for (const artwork of nextArtworks) {
-          if (!existingIds.has(artwork.id)) {
-            existingIds.add(artwork.id);
-            uniqueNextArtworks.push(artwork);
-          }
-        }
+      if (items.length > 0) {
+        setArtworks((prev) => [...prev, ...items]);
+      }
 
-        if (uniqueNextArtworks.length === 0) {
-          return prev;
-        }
-
-        return [...prev, ...uniqueNextArtworks];
-      });
-      setHasMore(Boolean(data.pagination?.next_url));
-      setPage((prev) => prev + 1);
+      pageRef.current += 1;
+      if (!payload.pagination?.next_url || (totalRef.current && artworks.length + items.length >= totalRef.current)) {
+        setHasMore(false);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
+      loadingPageRef.current = false;
       setLoading(false);
     }
-  }, [page, loading, hasMore]);
+  }, [artworks.length, hasMore]);
+
+  const ensureIndex = useCallback(
+    (index) => {
+      setRequestedIndex((prev) => (index > prev ? index : prev));
+    },
+    []
+  );
 
   useEffect(() => {
-    fetchArtworks();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const [entry] = entries;
-        if (entry.isIntersecting) {
-          fetchArtworks();
-        }
-      },
-      {
-        rootMargin: '200px',
-      }
-    );
-
-    const target = observerTarget.current;
-    if (target) {
-      observer.observe(target);
+    if (!hasMore && artworks.length === 0) {
+      return;
     }
 
-    return () => {
-      if (target) {
-        observer.unobserve(target);
-      }
-      observer.disconnect();
-    };
-  }, [fetchArtworks]);
+    if (artworks.length > requestedIndex || !hasMore) {
+      return;
+    }
 
-  const content = useMemo(() => {
+    if (!loadingPageRef.current) {
+      void fetchNextPage();
+    }
+  }, [requestedIndex, artworks.length, fetchNextPage, hasMore]);
+
+  useEffect(() => {
+    ensureIndex(0);
+  }, [ensureIndex]);
+
+  const statusMessage = useMemo(() => {
     if (error) {
-      return (
-        <div className="status status--error">
-          <p>There was a problem loading artwork. Please try again.</p>
-          <p className="status__details">{error}</p>
-        </div>
-      );
+      return 'There was a problem loading artwork. Try panning again in a moment.';
     }
-
-    if (!loading && artworks.length === 0) {
-      return (
-        <div className="status">
-          <p>No artwork found right now. Please try again later.</p>
-        </div>
-      );
+    if (!hasMore && artworks.length === 0) {
+      return 'No artwork available right now.';
     }
-
-    return (
-      <ArtworkGrid
-        artworks={artworks}
-        onSelect={(artwork) => setSelected(artwork)}
-      />
-    );
-  }, [artworks, error, loading]);
+    return null;
+  }, [artworks.length, error, hasMore]);
 
   return (
     <div className="app">
       <header className="app__header">
-        <h1>Art Institute Explorer</h1>
-        <p>Scroll through an endless wall of art and tap a tile for details.</p>
+        <div>
+          <h1>Chicago Art Atlas</h1>
+          <p>Drag or scroll in any direction to roam an endless canvas of the Art Institute of Chicago collection.</p>
+        </div>
+        <div className="app__badges" role="status" aria-live="polite">
+          {loading && <span className="app__badge app__badge--pulse">Loading</span>}
+          {!loading && (
+            <span className="app__badge">
+              {artworks.length > 0
+                ? `Loaded ${artworks.length.toLocaleString()} works`
+                : 'Awaiting artwork'}
+            </span>
+          )}
+        </div>
       </header>
 
-      {content}
+      <main className="app__content">
+        {statusMessage && (
+          <div className={`status status--floating${error ? ' status--error' : ''}`}>
+            <p>{statusMessage}</p>
+            {error && <p className="status__details">{error}</p>}
+          </div>
+        )}
 
-      <div ref={observerTarget} className="sentinel" aria-hidden="true" />
+        <ArtworkCanvas
+          artworks={artworks}
+          ensureIndex={ensureIndex}
+          hasMore={hasMore}
+          loading={loading}
+          onSelect={setSelected}
+        />
+      </main>
 
-      {loading && (
-        <div className="status">
-          <p>Loading more artwork…</p>
-        </div>
-      )}
-
-      <ArtworkModal
-        artwork={selected}
-        onClose={() => setSelected(null)}
-      />
+      <ArtworkModal artwork={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }
