@@ -3,7 +3,7 @@ import PropTypes from 'prop-types';
 
 const TILE_WIDTH = 320;
 const TILE_GAP = 24;
-const BOARD_CELLS = 120;
+const BOARD_CELLS = 400;
 const BOARD_UNIT = TILE_WIDTH + TILE_GAP;
 const BOARD_WIDTH = BOARD_CELLS * BOARD_UNIT;
 const BOARD_HEIGHT = BOARD_CELLS * BOARD_UNIT;
@@ -105,9 +105,8 @@ ArtworkTile.defaultProps = {
   style: undefined,
 };
 
-export default function ArtworkGrid({ placements, onSelect }) {
+export default function ArtworkGrid({ placements, onSelect, onViewportChange }) {
   const viewportRef = useRef(null);
-  const hasCenteredRef = useRef(false);
   const dragRef = useRef({
     active: false,
     pointerId: null,
@@ -123,80 +122,24 @@ export default function ArtworkGrid({ placements, onSelect }) {
 
   const viewportSize = useElementSize(viewportRef);
 
+  const hasCenteredRef = useRef(false);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const resolvedPlacements = useMemo(
+    () =>
+      placements.map((placement) => ({
+        ...placement,
+        width: placement.width ?? TILE_WIDTH,
+        height: placement.height ?? TILE_WIDTH,
+        boardX: (placement.x ?? 0) + BOARD_CENTER_X,
+        boardY: (placement.y ?? 0) + BOARD_CENTER_Y,
+      })),
+    [placements]
+  );
 
   useEffect(() => {
     offsetRef.current = offset;
   }, [offset]);
-
-  const placementBounds = useMemo(() => {
-    if (!placements.length) {
-      return null;
-    }
-
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-
-    placements.forEach((placement) => {
-      const width = placement.width ?? TILE_WIDTH;
-      const height = placement.height ?? TILE_WIDTH;
-      const x = placement.x ?? 0;
-      const y = placement.y ?? 0;
-
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x + width);
-      maxY = Math.max(maxY, y + height);
-    });
-
-    const width = Math.max(1, maxX - minX);
-    const height = Math.max(1, maxY - minY);
-
-    return {
-      minX,
-      minY,
-      maxX,
-      maxY,
-      width,
-      height,
-    };
-  }, [placements]);
-
-  const boardAlignment = useMemo(() => {
-    if (!placementBounds) {
-      return { offsetX: BOARD_CENTER_X, offsetY: BOARD_CENTER_Y };
-    }
-
-    const contentCenterX = placementBounds.minX + placementBounds.width / 2;
-    const contentCenterY = placementBounds.minY + placementBounds.height / 2;
-
-    return {
-      offsetX: BOARD_CENTER_X - contentCenterX,
-      offsetY: BOARD_CENTER_Y - contentCenterY,
-    };
-  }, [placementBounds]);
-
-  const resolvedPlacements = useMemo(
-    () =>
-      placements.map((placement) => {
-        const width = placement.width ?? TILE_WIDTH;
-        const height = placement.height ?? TILE_WIDTH;
-        const x = placement.x ?? 0;
-        const y = placement.y ?? 0;
-
-        return {
-          ...placement,
-          width,
-          height,
-          boardX: x + boardAlignment.offsetX,
-          boardY: y + boardAlignment.offsetY,
-        };
-      }),
-    [placements, boardAlignment.offsetX, boardAlignment.offsetY]
-  );
 
   const clampPan = useCallback(
     (nextX, nextY) => {
@@ -217,11 +160,7 @@ export default function ArtworkGrid({ placements, onSelect }) {
   }, [clampPan]);
 
   useEffect(() => {
-    if (
-      hasCenteredRef.current ||
-      !viewportSize.width ||
-      !viewportSize.height
-    ) {
+    if (hasCenteredRef.current || !viewportSize.width || !viewportSize.height) {
       return;
     }
 
@@ -355,6 +294,22 @@ export default function ArtworkGrid({ placements, onSelect }) {
     return { left, top, right, bottom };
   }, [offset.x, offset.y, viewportSize.width, viewportSize.height]);
 
+  const worldBounds = useMemo(
+    () => ({
+      left: viewBounds.left - BOARD_CENTER_X,
+      right: viewBounds.right - BOARD_CENTER_X,
+      top: viewBounds.top - BOARD_CENTER_Y,
+      bottom: viewBounds.bottom - BOARD_CENTER_Y,
+    }),
+    [viewBounds]
+  );
+
+  useEffect(() => {
+    if (onViewportChange) {
+      onViewportChange(worldBounds);
+    }
+  }, [onViewportChange, worldBounds]);
+
   const visiblePlacements = useMemo(() => {
     if (!viewportSize.width || !viewportSize.height) {
       return [];
@@ -459,4 +414,9 @@ ArtworkGrid.propTypes = {
     })
   ).isRequired,
   onSelect: PropTypes.func.isRequired,
+  onViewportChange: PropTypes.func,
+};
+
+ArtworkGrid.defaultProps = {
+  onViewportChange: null,
 };
