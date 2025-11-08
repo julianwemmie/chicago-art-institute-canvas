@@ -55,7 +55,6 @@ function buildDeterministicPlacements(artworks) {
       height: tileHeight,
       x,
       y,
-      column: targetColumn,
     };
   });
 }

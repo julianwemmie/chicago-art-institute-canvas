@@ -320,12 +320,6 @@ body {
   .app {
     padding: 1rem;
   }
-
-  .artwork-grid {
-    column-width: auto;
-    column-count: 1;
-    column-gap: 0;
-  }
 }
 
 @media (max-width: 900px) {
