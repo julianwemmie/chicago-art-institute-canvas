@@ -39,6 +39,12 @@ body {
 .art-grid {
   width: 100%;
   height: 100%;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.art-grid::-webkit-scrollbar {
+  display: none;
 }
 
 .tile-positioner {

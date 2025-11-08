@@ -148,14 +148,28 @@ export function InfiniteArtGrid() {
   }, []);
 
   useEffect(() => {
-    if (!gridRef.current || hasScrolledRef.current) {
+    const grid = gridRef.current;
+    if (!grid || hasScrolledRef.current) {
       return;
     }
     if (width === 0 || height === 0) {
       return;
     }
+
+    const totalWidth = columnCount * TILE_SIZE;
+    const totalHeight = rowCount * TILE_SIZE;
+
+    const desiredScrollLeft = ORIGIN_INDEX * TILE_SIZE - (width - TILE_SIZE) / 2;
+    const desiredScrollTop = ORIGIN_INDEX * TILE_SIZE - (height - TILE_SIZE) / 2;
+
+    const maxScrollLeft = Math.max(totalWidth - width, 0);
+    const maxScrollTop = Math.max(totalHeight - height, 0);
+
+    const scrollLeft = Math.min(Math.max(desiredScrollLeft, 0), maxScrollLeft);
+    const scrollTop = Math.min(Math.max(desiredScrollTop, 0), maxScrollTop);
+
+    grid.scrollTo({ scrollLeft, scrollTop });
     hasScrolledRef.current = true;
-    gridRef.current.scrollToItem({ columnIndex: ORIGIN_INDEX, rowIndex: ORIGIN_INDEX, align: 'center' });
   }, [width, height]);
 
   useEffect(() => {
