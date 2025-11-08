@@ -68,27 +68,23 @@ export default function ArtworkModal({ artwork, onClose }) {
           ×
         </button>
         <figure className="modal__body">
-          <div
-            className={`modal__media${isImageLoaded ? ' modal__media--loaded' : ''}`}
-          >
-            {!hasFullImage ? 
+          <div className="modal__media">
             <img
-              className={`modal__image`}
+              className="modal__image modal__image--visible"
               src={artwork.thumbnail}
-              alt=""
-              aria-hidden="true"
+              alt={artwork.title}
               height={artwork?.thumbnailHeight || undefined}
-            /> : 
-            <img
-                className={`modal__image modal__image--full${isImageLoaded ? ' modal__image--visible' : ''}`}
+            />
+            {hasFullImage && (
+              <img
+                className={`modal__image modal__image--hires${isImageLoaded ? ' modal__image--visible' : ''}`}
                 src={preloadedSrc}
                 alt={artwork.title}
                 height={artwork?.thumbnailHeight || undefined}
-                // onLoad is redundant due to preloading, but keep for safety
                 onLoad={() => setImageLoaded(true)}
                 onError={() => setImageLoaded(true)}
               />
-          }
+            )}
           </div>
           <figcaption className="modal__details">
             <h2>{artwork.title}</h2>
