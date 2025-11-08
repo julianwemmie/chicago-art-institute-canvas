@@ -57,9 +57,6 @@ export function InfiniteArtGrid() {
         for (let localCol = 0; localCol < SECTOR_SIZE; localCol += 1) {
           const index = tileIndex(localCol, localRow);
           const tile = sector.tiles[index];
-          if (tile.state === 'ready' && tile.artworkIndex !== undefined) {
-            continue;
-          }
 
           const worldCol = baseCol + localCol;
           const worldRow = baseRow + localRow;
@@ -225,10 +222,10 @@ export function InfiniteArtGrid() {
         const visibleSectorStartY = worldToSectorCoordinate(worldRowStart);
         const visibleSectorEndY = worldToSectorCoordinate(worldRowEnd);
 
-        const nearLeft = visibleSectorStartX <= bounds.minSx + 1;
-        const nearRight = visibleSectorEndX >= bounds.maxSx - 1;
-        const nearTop = visibleSectorStartY <= bounds.minSy + 1;
-        const nearBottom = visibleSectorEndY >= bounds.maxSy - 1;
+        const nearLeft = visibleSectorStartX <= bounds.minSx + Math.max(1, PREFETCH_SECTORS);
+        const nearRight = visibleSectorEndX >= bounds.maxSx - Math.max(1, PREFETCH_SECTORS);
+        const nearTop = visibleSectorStartY <= bounds.minSy + Math.max(1, PREFETCH_SECTORS);
+        const nearBottom = visibleSectorEndY >= bounds.maxSy - Math.max(1, PREFETCH_SECTORS);
 
         if ((nearLeft || nearRight || nearTop || nearBottom) && hasMore) {
           scheduleNextPage();
@@ -261,7 +258,7 @@ export function InfiniteArtGrid() {
       const idx = tileIndex(localCol, localRow);
       const tile = sector.tiles[idx];
 
-      if (artworksList.length > 0 && (tile.state === 'empty' || tile.artworkIndex === undefined)) {
+      if (artworksList.length > 0) {
         const artworkIndex = stableArtworkIndex(worldCol, worldRow, artworksList.length);
         if (artworkIndex >= 0) {
           tile.artworkIndex = artworkIndex;
