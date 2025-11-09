@@ -152,3 +152,16 @@ history/
 - ❌ Do NOT clutter repo root with planning documents
 
 For more details, see README.md and QUICKSTART.md.
+
+---
+
+## Project Snapshot
+
+- **What we’re building:** an infinite, pannable canvas of Art Institute of Chicago works. Tiles load deterministically from the AIC API as you explore in any direction, keeping memory in check by unloading off-screen DOM nodes.
+- **How it works:** the viewport reports its world-space bounds to `App` → we map those bounds to discrete “chunks” via deterministic Cantor indexing → each chunk fetches a bounded page of artworks → `buildWorldPlacements` stitches every chunk’s masonry layout into a seamless board by carrying column heights across chunk borders.
+- **Key modules:**
+  - `src/App.jsx` orchestrates chunk caching, fetches, and passes world placements to the grid.
+  - `src/lib/chunks.js` owns chunk math (stride sizes, viewport→chunk transforms, Cantor index/page mapping).
+  - `src/lib/layout.js` handles deterministic masonry packing plus the global stitcher.
+  - `src/lib/api.js` wraps the AIC API and normalizes artwork data.
+  - `src/components/ArtworkGrid.jsx` renders the virtualized board, reporting viewport changes back up so the fetch loop stays reactive.
