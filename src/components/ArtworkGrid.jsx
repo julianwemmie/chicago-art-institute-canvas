@@ -1,16 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import PropTypes from 'prop-types';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-const TILE_WIDTH = 320;
-const TILE_GAP = 24;
-const BOARD_CELLS = 400;
-const BOARD_UNIT = TILE_WIDTH + TILE_GAP;
-const BOARD_WIDTH = BOARD_CELLS * BOARD_UNIT;
-const BOARD_HEIGHT = BOARD_CELLS * BOARD_UNIT;
+const GRID_SPACING = 120;
+const GRID_MAJOR_EVERY = 5;
+const BOARD_CELLS = 200;
+const BOARD_WIDTH = BOARD_CELLS * GRID_SPACING;
+const BOARD_HEIGHT = BOARD_CELLS * GRID_SPACING;
 const BOARD_CENTER_X = BOARD_WIDTH / 2;
 const BOARD_CENTER_Y = BOARD_HEIGHT / 2;
 const DRAG_THRESHOLD_PX = 4;
-const VISIBLE_BUFFER = 600;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -58,54 +55,7 @@ function useElementSize(ref) {
   return size;
 }
 
-function ArtworkTile({ artwork, onSelect, style }) {
-  const aspectRatio =
-    artwork.thumbnailWidth && artwork.thumbnailHeight
-      ? `${artwork.thumbnailWidth}/${artwork.thumbnailHeight}`
-      : undefined;
-
-  return (
-    <button
-      type="button"
-      className="artwork-tile"
-      onClick={() => {
-        onSelect(artwork);
-      }}
-      data-aspect={aspectRatio}
-      style={style}
-    >
-      <img
-        src={artwork.thumbnail}
-        alt={artwork.title}
-        loading="lazy"
-        decoding="async"
-      />
-      <div className="artwork-tile__overlay">
-        <h3>{artwork.title}</h3>
-        <p>{artwork.artist}</p>
-      </div>
-    </button>
-  );
-}
-
-ArtworkTile.propTypes = {
-  artwork: PropTypes.shape({
-    id: PropTypes.number.isRequired,
-    title: PropTypes.string.isRequired,
-    artist: PropTypes.string.isRequired,
-    thumbnail: PropTypes.string,
-    thumbnailWidth: PropTypes.number,
-    thumbnailHeight: PropTypes.number,
-  }).isRequired,
-  onSelect: PropTypes.func.isRequired,
-  style: PropTypes.object,
-};
-
-ArtworkTile.defaultProps = {
-  style: undefined,
-};
-
-export default function ArtworkGrid({ placements, onSelect, onViewportChange }) {
+export default function ArtworkGrid() {
   const viewportRef = useRef(null);
   const dragRef = useRef({
     active: false,
@@ -115,27 +65,14 @@ export default function ArtworkGrid({ placements, onSelect, onViewportChange }) 
     originX: 0,
     originY: 0,
     moved: false,
-    preventClick: false,
     captured: false,
   });
   const offsetRef = useRef({ x: 0, y: 0 });
 
   const viewportSize = useElementSize(viewportRef);
-
   const hasCenteredRef = useRef(false);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const resolvedPlacements = useMemo(
-    () =>
-      placements.map((placement) => ({
-        ...placement,
-        width: placement.width ?? TILE_WIDTH,
-        height: placement.height ?? TILE_WIDTH,
-        boardX: (placement.x ?? 0) + BOARD_CENTER_X,
-        boardY: (placement.y ?? 0) + BOARD_CENTER_Y,
-      })),
-    [placements]
-  );
 
   useEffect(() => {
     offsetRef.current = offset;
@@ -170,33 +107,8 @@ export default function ArtworkGrid({ placements, onSelect, onViewportChange }) 
     setOffset(clampPan(centeredX, centeredY));
   }, [viewportSize.width, viewportSize.height, clampPan]);
 
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) {
-      return undefined;
-    }
-
-    const handleClickCapture = (event) => {
-      if (dragRef.current.preventClick) {
-        dragRef.current.preventClick = false;
-        event.stopPropagation();
-        event.preventDefault();
-      }
-    };
-
-    viewport.addEventListener('click', handleClickCapture, true);
-    return () => {
-      viewport.removeEventListener('click', handleClickCapture, true);
-    };
-  }, []);
-
   const handlePointerDown = useCallback((event) => {
     if (event.pointerType === 'mouse' && event.button !== 0) {
-      return;
-    }
-
-    const viewport = viewportRef.current;
-    if (!viewport) {
       return;
     }
 
@@ -207,7 +119,6 @@ export default function ArtworkGrid({ placements, onSelect, onViewportChange }) 
     dragRef.current.originX = offsetRef.current.x;
     dragRef.current.originY = offsetRef.current.y;
     dragRef.current.moved = false;
-    dragRef.current.preventClick = false;
     dragRef.current.captured = false;
   }, []);
 
@@ -223,14 +134,13 @@ export default function ArtworkGrid({ placements, onSelect, onViewportChange }) 
 
       if (!drag.moved && Math.hypot(deltaX, deltaY) > DRAG_THRESHOLD_PX) {
         drag.moved = true;
-        drag.preventClick = true;
         setIsDragging(true);
         if (!drag.captured && viewportRef.current) {
           try {
             viewportRef.current.setPointerCapture(drag.pointerId);
             drag.captured = true;
           } catch (captureError) {
-            // ignore capture issues (e.g., pointer already released)
+            // ignore capture issues
           }
         }
       }
@@ -248,24 +158,19 @@ export default function ArtworkGrid({ placements, onSelect, onViewportChange }) 
       return;
     }
 
-    const viewport = viewportRef.current;
     drag.active = false;
     drag.pointerId = null;
     drag.startX = 0;
     drag.startY = 0;
     drag.originX = offsetRef.current.x;
     drag.originY = offsetRef.current.y;
+    drag.moved = false;
     setIsDragging(false);
 
-    if (viewport?.hasPointerCapture(event.pointerId)) {
-      viewport.releasePointerCapture(event.pointerId);
+    if (viewportRef.current?.hasPointerCapture(event.pointerId)) {
+      viewportRef.current.releasePointerCapture(event.pointerId);
     }
 
-    if (!drag.moved) {
-      drag.preventClick = false;
-    }
-
-    drag.moved = false;
     if (drag.captured) {
       drag.captured = false;
     }
@@ -286,67 +191,6 @@ export default function ArtworkGrid({ placements, onSelect, onViewportChange }) 
     [clampPan]
   );
 
-  const viewBounds = useMemo(() => {
-    const left = -offset.x;
-    const top = -offset.y;
-    const right = left + viewportSize.width;
-    const bottom = top + viewportSize.height;
-    return { left, top, right, bottom };
-  }, [offset.x, offset.y, viewportSize.width, viewportSize.height]);
-
-  const worldBounds = useMemo(
-    () => ({
-      left: viewBounds.left - BOARD_CENTER_X,
-      right: viewBounds.right - BOARD_CENTER_X,
-      top: viewBounds.top - BOARD_CENTER_Y,
-      bottom: viewBounds.bottom - BOARD_CENTER_Y,
-    }),
-    [viewBounds]
-  );
-
-  useEffect(() => {
-    if (onViewportChange) {
-      onViewportChange(worldBounds);
-    }
-  }, [onViewportChange, worldBounds]);
-
-  const visiblePlacements = useMemo(() => {
-    if (!viewportSize.width || !viewportSize.height) {
-      return [];
-    }
-
-    const buffer = VISIBLE_BUFFER;
-    const extended = {
-      left: viewBounds.left - buffer,
-      right: viewBounds.right + buffer,
-      top: viewBounds.top - buffer,
-      bottom: viewBounds.bottom + buffer,
-    };
-
-    return resolvedPlacements
-      .map((placement) => {
-        const tileBounds = {
-          left: placement.boardX,
-          top: placement.boardY,
-          right: placement.boardX + placement.width,
-          bottom: placement.boardY + placement.height,
-        };
-
-        const intersects =
-          tileBounds.right >= extended.left &&
-          tileBounds.left <= extended.right &&
-          tileBounds.bottom >= extended.top &&
-          tileBounds.top <= extended.bottom;
-
-        if (!intersects) {
-          return null;
-        }
-
-        return placement;
-      })
-      .filter(Boolean);
-  }, [resolvedPlacements, viewBounds, viewportSize.height, viewportSize.width]);
-
   const frameClassName = [
     'artwork-viewport__frame',
     isDragging ? 'artwork-viewport__frame--dragging' : null,
@@ -365,58 +209,31 @@ export default function ArtworkGrid({ placements, onSelect, onViewportChange }) 
         onPointerCancel={endDrag}
         onWheel={handleWheel}
         role="region"
-        aria-label="Artwork viewport"
+        aria-label="Draggable canvas"
       >
         <section
           className="artwork-grid"
-          aria-live="polite"
           style={{
             width: `${BOARD_WIDTH}px`,
             height: `${BOARD_HEIGHT}px`,
             transform: `translate3d(${offset.x}px, ${offset.y}px, 0)`,
           }}
         >
-          {visiblePlacements.map((placement) => (
-            <ArtworkTile
-              key={placement.id}
-              artwork={placement.artwork}
-              onSelect={onSelect}
-              style={{
-                width: `${placement.width}px`,
-                height: `${placement.height}px`,
-                position: 'absolute',
-                transform: `translate3d(${placement.boardX}px, ${placement.boardY}px, 0)`,
-              }}
-            />
-          ))}
+          <div
+            className="artwork-grid__lines"
+            style={{
+              '--grid-spacing': `${GRID_SPACING}px`,
+              '--grid-major-spacing': `${GRID_SPACING * GRID_MAJOR_EVERY}px`,
+            }}
+          />
+          <div
+            className="artwork-grid__origin"
+            style={{
+              transform: `translate3d(${BOARD_CENTER_X}px, ${BOARD_CENTER_Y}px, 0)`,
+            }}
+          />
         </section>
       </div>
     </div>
   );
 }
-
-ArtworkGrid.propTypes = {
-  placements: PropTypes.arrayOf(
-    PropTypes.shape({
-      id: PropTypes.string.isRequired,
-      x: PropTypes.number,
-      y: PropTypes.number,
-      width: PropTypes.number,
-      height: PropTypes.number,
-      artwork: PropTypes.shape({
-        id: PropTypes.number.isRequired,
-        title: PropTypes.string.isRequired,
-        artist: PropTypes.string.isRequired,
-        thumbnail: PropTypes.string,
-        thumbnailWidth: PropTypes.number,
-        thumbnailHeight: PropTypes.number,
-      }).isRequired,
-    })
-  ).isRequired,
-  onSelect: PropTypes.func.isRequired,
-  onViewportChange: PropTypes.func,
-};
-
-ArtworkGrid.defaultProps = {
-  onViewportChange: null,
-};
