@@ -23,8 +23,8 @@ import styles from './PannableGrid.module.css';
  *
  * Async data function example
  *
- * const getItems = (view: Viewport) => {
- *   return queryItems(view);
+ * const getItems = (view: Viewport, prevView: Viewport) => {
+ *   return queryItems(view, prevView);
  * };
  *
  * <PannableGrid getItems={getItems} overscan={600} />
@@ -42,7 +42,10 @@ export type GridItem = {
 
 export type Viewport = { x: number; y: number; width: number; height: number };
 
-type DataFn = (view: Viewport) => GridItem[] | Promise<GridItem[]>;
+type DataFn = (
+  view: Viewport,
+  prevView: Viewport,
+) => GridItem[] | Promise<GridItem[]>;
 
 export type PannableGridProps = {
   items?: GridItem[];
@@ -282,6 +285,7 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
     const useDataFn = Boolean(getItems);
     const [dynamicItems, setDynamicItems] = useState<GridItem[]>([]);
     const getItemsRef = useRef(getItems);
+    const prevViewRef = useRef<Viewport | null>(null);
 
     useEffect(() => {
       getItemsRef.current = getItems;
@@ -295,7 +299,9 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
       if (!hasViewport) return;
 
       const currentRequest = ++requestIdRef.current;
-      const maybe = getItemsRef.current?.(view);
+      const prevView = prevViewRef.current ?? view;
+      prevViewRef.current = view;
+      const maybe = getItemsRef.current?.(view, prevView);
       const handleResult = (result: GridItem[] | undefined) => {
         if (currentRequest !== requestIdRef.current) return;
         setDynamicItems(result ?? []);
@@ -313,22 +319,21 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
       }
     }, [expandedView, hasViewport, getItems]);
 
-    const staticItems = useMemo(() => {
-      if (!items || !items.length) return [];
+    const renderableItems = useMemo(() => {
+      const source = useDataFn ? dynamicItems : items ?? [];
+      if (!source.length) return [];
       const xMin = expandedView.x;
       const xMax = expandedView.x + expandedView.width;
       const yMin = expandedView.y;
       const yMax = expandedView.y + expandedView.height;
-      return items.filter(
+      return source.filter(
         (item) =>
           item.x >= xMin &&
           item.x <= xMax &&
           item.y >= yMin &&
           item.y <= yMax,
       );
-    }, [items, expandedView]);
-
-    const renderedItems = useDataFn ? dynamicItems : staticItems;
+    }, [useDataFn, dynamicItems, items, expandedView]);
 
     useEffect(() => {
       if (!onCameraChange) return;
@@ -428,7 +433,7 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
           className={cx(styles.world, worldClassName)}
           style={{ transform }}
         >
-          {renderedItems.map((item, index) => {
+          {renderableItems.map((item, index) => {
             const key = item.id ?? `${item.x}:${item.y}:${index}`;
             return (
               <div
