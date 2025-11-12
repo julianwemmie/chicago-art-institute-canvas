@@ -1,0 +1,56 @@
+.wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.world {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+.item {
+  position: absolute;
+}
+
+.debugLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-family: system-ui, sans-serif;
+  font-size: 11px;
+}
+
+.gridLine {
+  position: absolute;
+  opacity: 0.25;
+}
+
+.gridLineX {
+  height: 1px;
+  width: 100%;
+  background: #888;
+}
+
+.gridLineY {
+  width: 1px;
+  height: 100%;
+  background: #888;
+}
+
+.gridLabel {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 2px 4px;
+  border-radius: 3px;
+  transform: translate(2px, 2px);
+}
+
+.dragging {
+  cursor: grabbing;
+}
