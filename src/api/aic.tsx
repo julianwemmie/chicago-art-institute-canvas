@@ -1,16 +1,10 @@
 import React from "react";
+import { MasonryImage } from "../lib/masonry";
 
 const BASE_API = "https://api.artic.edu/api/v1/artworks";
 const IIIF_BASE = "https://www.artic.edu/iiif/2";
 const DEFAULT_BATCH_SIZE = 25;
 const DEFAULT_REFILL_THRESHOLD = 5;
-
-type MasonryImage = {
-  id?: string | number;
-  width?: number;      // natural width
-  height?: number;     // natural height
-  content: React.ReactNode; // what to render (e.g., <img .../>)
-};
 
 type Artwork = {
   id: number;
