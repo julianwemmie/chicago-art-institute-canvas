@@ -25,7 +25,7 @@ export default function App(): JSX.Element {
 
   return (
     <div className="app">
-      <PannableGrid getItems={getItems} overscan={2000} debug />
+      <PannableGrid getItems={getItems} overscan={1000} debug />
     </div>
   );
 }
