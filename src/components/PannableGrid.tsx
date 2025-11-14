@@ -40,19 +40,12 @@ export type GridItem = {
   content: React.ReactNode;
 };
 
-export type GridDataResult =
-  | GridItem[]
-  | {
-      items?: GridItem[];
-      debugItems?: GridItem[];
-    };
-
 export type Viewport = { x: number; y: number; width: number; height: number };
 
 type DataFn = (
   view: Viewport,
   prevView: Viewport,
-) => GridDataResult | Promise<GridDataResult>;
+) => GridItem[] | Promise<GridItem[]>;
 
 export type PannableGridProps = {
   items?: GridItem[];
@@ -82,20 +75,6 @@ const MINIMAP_SIZE = 150;
 const MINIMAP_ITEM_SIZE = 4;
 const INERTIA_DECAY = 0.004;
 const VELOCITY_EPSILON = 0.02;
-
-const normalizeGridDataResult = (
-  result: GridDataResult | undefined,
-): { items: GridItem[]; debugItems: GridItem[] } => {
-  if (!result) {
-    return { items: [], debugItems: [] };
-  }
-  if (Array.isArray(result)) {
-    return { items: result, debugItems: result };
-  }
-  const items = result.items ?? [];
-  const debugItems = result.debugItems ?? items;
-  return { items, debugItems };
-};
 
 export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
   (
@@ -386,7 +365,6 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
 
     const useDataFn = Boolean(getItems);
     const [dynamicItems, setDynamicItems] = useState<GridItem[]>([]);
-    const [debugItems, setDebugItems] = useState<GridItem[]>([]);
     const getItemsRef = useRef(getItems);
     const prevViewRef = useRef<Viewport | null>(null);
 
@@ -405,34 +383,30 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
       const prevView = prevViewRef.current ?? view;
       prevViewRef.current = view;
       const maybe = getItemsRef.current?.(view, prevView);
-      const handleResult = (result: GridDataResult | undefined) => {
+      const handleResult = (result: GridItem[] | undefined) => {
         if (currentRequest !== requestIdRef.current) return;
-        const normalized = normalizeGridDataResult(result);
-        setDynamicItems(normalized.items);
-        setDebugItems(normalized.debugItems);
+        if (!result) {
+          setDynamicItems([]);
+          return;
+        }
+        setDynamicItems(result);
       };
-      if (maybe && typeof (maybe as Promise<GridDataResult>).then === 'function') {
-        (maybe as Promise<GridDataResult>)
+      if (maybe && typeof (maybe as Promise<GridItem[]>).then === 'function') {
+        (maybe as Promise<GridItem[]>)
           .then(handleResult)
           .catch(() => {
             if (currentRequest === requestIdRef.current) {
               setDynamicItems([]);
-              setDebugItems([]);
             }
           });
       } else {
-        handleResult(maybe as GridDataResult | undefined);
+        handleResult(maybe as GridItem[] | undefined);
       }
     }, [expandedView, hasViewport, getItems]);
 
     const currentItems = useMemo(
       () => (useDataFn ? dynamicItems : items ?? []),
       [useDataFn, dynamicItems, items],
-    );
-
-    const debugMiniMapItems = useMemo(
-      () => (useDataFn ? debugItems : items ?? []),
-      [useDataFn, debugItems, items],
     );
 
     const renderableItems = useMemo(() => {
@@ -537,13 +511,13 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
 
     const renderMiniMap = () => {
       if (!debug) return null;
-      if (!debugMiniMapItems.length) return null;
+      if (!currentItems.length) return null;
 
       let minX = Infinity;
       let minY = Infinity;
       let maxX = -Infinity;
       let maxY = -Infinity;
-      debugMiniMapItems.forEach((item) => {
+      currentItems.forEach((item) => {
         if (item.x < minX) minX = item.x;
         if (item.y < minY) minY = item.y;
         if (item.x > maxX) maxX = item.x;
@@ -582,7 +556,7 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
       return (
         <div className={styles.miniMap}>
           <div className={styles.miniMapContent}>
-            {debugMiniMapItems.map((item, index) => {
+            {currentItems.map((item, index) => {
               const key = item.id ?? `${item.x}:${item.y}:${index}`;
               const left = offsetX + (item.x - minX) * scale - MINIMAP_ITEM_SIZE / 2;
               const top = offsetY + (item.y - minY) * scale - MINIMAP_ITEM_SIZE / 2;

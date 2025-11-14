@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { GridDataResult, GridItem, Viewport } from "../components/PannableGrid";
+import type { GridItem, Viewport } from "../components/PannableGrid";
 
 export type MasonryImage = {
   id?: string | number;
@@ -85,13 +85,10 @@ export class MasonryLayout {
    * Returns the items that intersect the requested viewport after ensuring
    * initialization and border expansion happen in deterministic order.
    */
-  public async getItems(view: Viewport): Promise<GridDataResult> {
+  public async getItems(view: Viewport): Promise<GridItem[]> {
     await this.ensureInitialized(view);
     await this.scheduleBorderUpdates(view);
-    return {
-      items: this.state.placedImages.map((placed) => this.toGridItem(placed)),
-      debugItems: this.state.placedImages.map((placed) => this.toGridItem(placed)),
-    };
+    return this.state.placedImages.map((placed) => this.toGridItem(placed))
   }
 
   private get columnSpan(): number {
