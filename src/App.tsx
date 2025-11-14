@@ -1,14 +1,25 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PannableGrid, Viewport } from "./components/PannableGrid";
 import { MasonryLayout } from "./lib/masonry";
 import { createAICImageGenerator } from "./api/aic";
 
+const DEFAULT_IMAGE_WIDTH = 450;
+
 export default function App(): JSX.Element {
-  const generator = useMemo(createAICImageGenerator, []);
+
+  let imageWidth = DEFAULT_IMAGE_WIDTH;
+  const vwPixels = window.visualViewport?.width;
+  if (vwPixels && vwPixels < DEFAULT_IMAGE_WIDTH) {
+    imageWidth = vwPixels - 50;
+  }
+
+  const generator = useMemo(() => createAICImageGenerator({
+    imageWidth: imageWidth,
+  }), []);
   const layout = useMemo(
     () =>
       new MasonryLayout({
-        columnWidth: 450,
+        columnWidth: imageWidth,
         columnGap: 16,
         rowGap: 16,
         originX: -600,

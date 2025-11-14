@@ -15,9 +15,10 @@ type Artwork = {
 type GeneratorOptions = {
   batchSize?: number;
   refillThreshold?: number;
+  imageWidth?: number;
 };
 
-async function buildMasonryImage(artwork: Artwork): Promise<MasonryImage | null> {
+async function buildMasonryImage(artwork: Artwork, options: GeneratorOptions): Promise<MasonryImage | null> {
   if (!artwork.image_id) {
     return null;
   }
@@ -55,7 +56,7 @@ async function buildMasonryImage(artwork: Artwork): Promise<MasonryImage | null>
         src={imageUrl}
         alt={artwork.title ?? "Artwork"}
         loading="eager"
-        width={450}
+        width={ options.imageWidth ?? width }
         // style={{ width: "100%", height: "auto", display: "block" }}
       />
     ),
@@ -93,7 +94,7 @@ export function createAICImageGenerator(
         .filter((art) => art.image_id && !seenIds.has(art.id))
         .map(async (art) => {
           try {
-            return await buildMasonryImage(art);
+            return await buildMasonryImage(art, options);
           } catch {
             return null;
           }
