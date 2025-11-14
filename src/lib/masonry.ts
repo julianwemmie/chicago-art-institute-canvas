@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { GridItem, Viewport } from "../components/PannableGrid";
+import type { GridDataResult, GridItem, Viewport } from "../components/PannableGrid";
 
 export type MasonryImage = {
   id?: string | number;
@@ -97,10 +97,13 @@ export class MasonryLayout {
     this.verticalOverscan = Math.max(columnWidth * 2, rowGap * 4, 1);
   }
 
-  public async getItems(view: Viewport): Promise<GridItem[]> {
+  public async getItems(view: Viewport): Promise<GridDataResult> {
     await this.ensureInitialized(view);
     await this.enqueue(() => this.processBorders(view));
-    return this.collectVisibleItems(view);
+    return {
+      items: this.collectVisibleItems(view),
+      debugItems: this.state.placedImages.map((placed) => this.toGridItem(placed)),
+    };
   }
 
   private enqueue(task: () => Promise<void>): Promise<void> {
@@ -537,6 +540,15 @@ export class MasonryLayout {
     };
   }
 
+  private toGridItem(placed: PlacedImage): GridItem {
+    return {
+      id: placed.id,
+      x: placed.x,
+      y: placed.y,
+      content: placed.content,
+    };
+  }
+
   private collectVisibleItems(view: Viewport): GridItem[] {
     const windowLeft = view.x - this.horizontalOverscan;
     const windowRight = view.x + view.width + this.horizontalOverscan;
@@ -551,12 +563,7 @@ export class MasonryLayout {
         const vertical = bottom >= windowTop && placed.y <= windowBottom;
         return horizontal && vertical;
       })
-      .map((placed) => ({
-        id: placed.id,
-        x: placed.x,
-        y: placed.y,
-        content: placed.content,
-      }));
+      .map((placed) => this.toGridItem(placed));
   }
 
   public getDebugPlacedImages(): PlacedImage[] {

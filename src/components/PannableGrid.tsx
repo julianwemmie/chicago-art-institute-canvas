@@ -40,12 +40,19 @@ export type GridItem = {
   content: React.ReactNode;
 };
 
+export type GridDataResult =
+  | GridItem[]
+  | {
+      items?: GridItem[];
+      debugItems?: GridItem[];
+    };
+
 export type Viewport = { x: number; y: number; width: number; height: number };
 
 type DataFn = (
   view: Viewport,
   prevView: Viewport,
-) => GridItem[] | Promise<GridItem[]>;
+) => GridDataResult | Promise<GridDataResult>;
 
 export type PannableGridProps = {
   items?: GridItem[];
@@ -71,6 +78,22 @@ const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 const GRID_SPACING = 200;
+const MINIMAP_SIZE = 150;
+const MINIMAP_ITEM_SIZE = 4;
+
+const normalizeGridDataResult = (
+  result: GridDataResult | undefined,
+): { items: GridItem[]; debugItems: GridItem[] } => {
+  if (!result) {
+    return { items: [], debugItems: [] };
+  }
+  if (Array.isArray(result)) {
+    return { items: result, debugItems: result };
+  }
+  const items = result.items ?? [];
+  const debugItems = result.debugItems ?? items;
+  return { items, debugItems };
+};
 
 export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
   (
@@ -284,6 +307,7 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
 
     const useDataFn = Boolean(getItems);
     const [dynamicItems, setDynamicItems] = useState<GridItem[]>([]);
+    const [debugItems, setDebugItems] = useState<GridItem[]>([]);
     const getItemsRef = useRef(getItems);
     const prevViewRef = useRef<Viewport | null>(null);
 
@@ -302,25 +326,38 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
       const prevView = prevViewRef.current ?? view;
       prevViewRef.current = view;
       const maybe = getItemsRef.current?.(view, prevView);
-      const handleResult = (result: GridItem[] | undefined) => {
+      const handleResult = (result: GridDataResult | undefined) => {
         if (currentRequest !== requestIdRef.current) return;
-        setDynamicItems(result ?? []);
+        const normalized = normalizeGridDataResult(result);
+        setDynamicItems(normalized.items);
+        setDebugItems(normalized.debugItems);
       };
-      if (maybe && typeof (maybe as Promise<GridItem[]>).then === 'function') {
-        (maybe as Promise<GridItem[]>)
+      if (maybe && typeof (maybe as Promise<GridDataResult>).then === 'function') {
+        (maybe as Promise<GridDataResult>)
           .then(handleResult)
           .catch(() => {
             if (currentRequest === requestIdRef.current) {
               setDynamicItems([]);
+              setDebugItems([]);
             }
           });
       } else {
-        handleResult(maybe as GridItem[] | undefined);
+        handleResult(maybe as GridDataResult | undefined);
       }
     }, [expandedView, hasViewport, getItems]);
 
+    const currentItems = useMemo(
+      () => (useDataFn ? dynamicItems : items ?? []),
+      [useDataFn, dynamicItems, items],
+    );
+
+    const debugMiniMapItems = useMemo(
+      () => (useDataFn ? debugItems : items ?? []),
+      [useDataFn, debugItems, items],
+    );
+
     const renderableItems = useMemo(() => {
-      const source = useDataFn ? dynamicItems : items ?? [];
+      const source = currentItems;
       if (!source.length) return [];
       const xMin = expandedView.x;
       const xMax = expandedView.x + expandedView.width;
@@ -333,7 +370,7 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
           item.y >= yMin &&
           item.y <= yMax,
       );
-    }, [useDataFn, dynamicItems, items, expandedView]);
+    }, [currentItems, expandedView]);
 
     useEffect(() => {
       if (!onCameraChange) return;
@@ -419,6 +456,84 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
       );
     };
 
+    const renderMiniMap = () => {
+      if (!debug) return null;
+      if (!debugMiniMapItems.length) return null;
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      debugMiniMapItems.forEach((item) => {
+        if (item.x < minX) minX = item.x;
+        if (item.y < minY) minY = item.y;
+        if (item.x > maxX) maxX = item.x;
+        if (item.y > maxY) maxY = item.y;
+      });
+
+      if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+        return null;
+      }
+
+      const spanX = Math.max(maxX - minX, 1);
+      const spanY = Math.max(maxY - minY, 1);
+      const scale = Math.min(MINIMAP_SIZE / spanX, MINIMAP_SIZE / spanY);
+      const contentWidth = spanX * scale;
+      const contentHeight = spanY * scale;
+      const offsetX = (MINIMAP_SIZE - contentWidth) / 2;
+      const offsetY = (MINIMAP_SIZE - contentHeight) / 2;
+
+      const clamp = (value: number, min: number, max: number) => {
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
+      };
+
+      const clampWithSize = (value: number, size: number) =>
+        clamp(value, 0, Math.max(MINIMAP_SIZE - size, 0));
+      const viewportWidth = Math.min(Math.max(view.width * scale, 2), MINIMAP_SIZE);
+      const viewportHeight = Math.min(Math.max(view.height * scale, 2), MINIMAP_SIZE);
+      const viewportRect = {
+        left: clampWithSize(offsetX + (view.x - minX) * scale, viewportWidth),
+        top: clampWithSize(offsetY + (view.y - minY) * scale, viewportHeight),
+        width: viewportWidth,
+        height: viewportHeight,
+      };
+
+      return (
+        <div className={styles.miniMap}>
+          <div className={styles.miniMapContent}>
+            {debugMiniMapItems.map((item, index) => {
+              const key = item.id ?? `${item.x}:${item.y}:${index}`;
+              const left = offsetX + (item.x - minX) * scale - MINIMAP_ITEM_SIZE / 2;
+              const top = offsetY + (item.y - minY) * scale - MINIMAP_ITEM_SIZE / 2;
+              return (
+                <div
+                  key={key}
+                  className={styles.miniMapItem}
+                  style={{
+                    left,
+                    top,
+                    width: MINIMAP_ITEM_SIZE,
+                    height: MINIMAP_ITEM_SIZE,
+                  }}
+                />
+              );
+            })}
+            <div
+              className={styles.miniMapViewport}
+              style={{
+                left: viewportRect.left,
+                top: viewportRect.top,
+                width: viewportRect.width,
+                height: viewportRect.height,
+              }}
+            />
+          </div>
+        </div>
+      );
+    };
+
     return (
       <div
         ref={containerRef}
@@ -450,6 +565,7 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
           })}
         </div>
         {renderDebug()}
+        {renderMiniMap()}
       </div>
     );
   },
