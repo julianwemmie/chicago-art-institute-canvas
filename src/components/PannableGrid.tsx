@@ -80,6 +80,8 @@ const useIsomorphicLayoutEffect =
 const GRID_SPACING = 200;
 const MINIMAP_SIZE = 150;
 const MINIMAP_ITEM_SIZE = 4;
+const INERTIA_DECAY = 0.004;
+const VELOCITY_EPSILON = 0.02;
 
 const normalizeGridDataResult = (
   result: GridDataResult | undefined,
@@ -188,15 +190,6 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
       [flushPan],
     );
 
-    useEffect(
-      () => () => {
-        if (rafRef.current != null && typeof window !== 'undefined') {
-          window.cancelAnimationFrame(rafRef.current);
-        }
-      },
-      [],
-    );
-
     useIsomorphicLayoutEffect(() => {
       const node = containerRef.current;
       if (!node || typeof ResizeObserver === 'undefined') {
@@ -234,8 +227,76 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
       pointerId: number;
       lastX: number;
       lastY: number;
+      lastTime: number;
     } | null>(null);
     const [dragging, setDragging] = useState(false);
+    const velocityRef = useRef({ vx: 0, vy: 0 });
+    const inertiaFrameRef = useRef<number | null>(null);
+    const inertiaStateRef = useRef<{
+      vx: number;
+      vy: number;
+      lastTime: number;
+    } | null>(null);
+
+    const stopInertia = useCallback(() => {
+      inertiaStateRef.current = null;
+      if (
+        inertiaFrameRef.current != null &&
+        typeof window !== 'undefined'
+      ) {
+        window.cancelAnimationFrame(inertiaFrameRef.current);
+      }
+      inertiaFrameRef.current = null;
+    }, []);
+
+    const runInertiaFrame = useCallback(() => {
+      const state = inertiaStateRef.current;
+      if (!state || typeof window === 'undefined') {
+        return;
+      }
+      const now =
+        typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const dt = Math.min(now - state.lastTime, 1000 / 30);
+      state.lastTime = now;
+      const damping = Math.exp(-INERTIA_DECAY * dt);
+      state.vx *= damping;
+      state.vy *= damping;
+      if (
+        Math.abs(state.vx) < VELOCITY_EPSILON &&
+        Math.abs(state.vy) < VELOCITY_EPSILON
+      ) {
+        stopInertia();
+        return;
+      }
+      schedulePan(state.vx * dt, state.vy * dt);
+      inertiaFrameRef.current = window.requestAnimationFrame(runInertiaFrame);
+    }, [schedulePan, stopInertia]);
+
+    const startInertia = useCallback(() => {
+      stopInertia();
+      const { vx, vy } = velocityRef.current;
+      const speed = Math.hypot(vx, vy);
+      if (speed < VELOCITY_EPSILON) {
+        return;
+      }
+      const now =
+        typeof performance !== 'undefined' ? performance.now() : Date.now();
+      inertiaStateRef.current = { vx, vy, lastTime: now };
+      if (typeof window === 'undefined') {
+        return;
+      }
+      inertiaFrameRef.current = window.requestAnimationFrame(runInertiaFrame);
+    }, [runInertiaFrame, stopInertia]);
+
+    useEffect(
+      () => () => {
+        if (rafRef.current != null && typeof window !== 'undefined') {
+          window.cancelAnimationFrame(rafRef.current);
+        }
+        stopInertia();
+      },
+      [stopInertia],
+    );
 
     const handlePointerDown = useCallback(
       (event: React.PointerEvent<HTMLDivElement>) => {
@@ -244,14 +305,20 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
         if (!node) return;
         event.preventDefault();
         node.setPointerCapture(event.pointerId);
+        stopInertia();
+        velocityRef.current = { vx: 0, vy: 0 };
         dragStateRef.current = {
           pointerId: event.pointerId,
           lastX: event.clientX,
           lastY: event.clientY,
+          lastTime:
+            typeof performance !== 'undefined'
+              ? performance.now()
+              : Date.now(),
         };
         setDragging(true);
       },
-      [],
+      [stopInertia],
     );
 
     const handlePointerMove = useCallback(
@@ -263,7 +330,18 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
         const dy = event.clientY - drag.lastY;
         drag.lastX = event.clientX;
         drag.lastY = event.clientY;
-        schedulePan(-dx, -dy);
+        const panDx = -dx;
+        const panDy = -dy;
+        schedulePan(panDx, panDy);
+        const now =
+          typeof performance !== 'undefined' ? performance.now() : Date.now();
+        const dt = Math.max(now - drag.lastTime, 1);
+        drag.lastTime = now;
+        const smoothing = 0.2;
+        velocityRef.current.vx =
+          velocityRef.current.vx * (1 - smoothing) + (panDx / dt) * smoothing;
+        velocityRef.current.vy =
+          velocityRef.current.vy * (1 - smoothing) + (panDy / dt) * smoothing;
       },
       [schedulePan],
     );
@@ -276,8 +354,9 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
         node?.releasePointerCapture(event.pointerId);
         dragStateRef.current = null;
         setDragging(false);
+        startInertia();
       },
-      [],
+      [startInertia],
     );
 
     const handlePointerCaptureLost = useCallback(() => {
