@@ -3,10 +3,8 @@ import { GridItem } from "../components/PannableGrid";
 // minimal image input for masonry
 export type MasonryImage = {
   id?: string | number;
-  /** Either provide (natural) width+height OR aspectRatio */
   width?: number;      // natural width
   height?: number;     // natural height
-  aspectRatio?: number; // width / height
   content: React.ReactNode; // what to render (e.g., <img .../>)
 };
 
@@ -119,9 +117,7 @@ export function computeMasonryLayout(
     const img = images[i];
 
     // Resolve aspect ratio
-    const ar =
-      img.aspectRatio ??
-      (img.width && img.height ? img.width / img.height : undefined);
+    const ar = (img.width && img.height ? img.width / img.height : undefined);
     if (!ar || !Number.isFinite(ar) || ar <= 0) {
       // Skip items with unknown sizing
       // (Alternatively, you could assign a fallback height.)

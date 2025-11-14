@@ -3,61 +3,6 @@ import { PannableGrid, GridItem, Viewport } from "./components/PannableGrid";
 import { computeMasonryLayout, MasonryImage } from "./lib/masonry";
 
 export default function App(): JSX.Element {
-  const sampleItems: GridItem[] = [
-    {
-      id: "origin",
-      x: 0,
-      y: 0,
-      content: (
-        <div style={pinStyle}>
-          <strong>Origin</strong>
-        </div>
-      ),
-    },
-    {
-      id: "gallery",
-      x: 400,
-      y: 200,
-      content: (
-        <div style={{ ...pinStyle, background: "#4caf50" }}>
-          Gallery
-        </div>
-      ),
-    },
-    {
-      id: "museum",
-      x: -300,
-      y: 450,
-      content: (
-        <div style={{ ...pinStyle, background: "#ff9800" }}>
-          Museum
-        </div>
-      ),
-    },
-    {
-      id: '4',
-      x: 300,
-      y: 300,
-      content: (
-        <img 
-          src="https://www.artic.edu/iiif/2/25c31d8d-21a4-9ea1-1d73-6a2eca4dda7e/full/1686,/0/default.jpg" 
-          width={300}
-        />
-      )
-    },
-    {
-      id: '5',
-      x: 500,
-      y: 500,
-      content: (
-        <img 
-          src="https://www.artic.edu/iiif/2/25c31d8d-21a4-9ea1-1d73-6a2eca4dda7e/full/1686,/0/default.jpg" 
-          width={300}
-        />
-      )
-    }
-  ];
-
   async function fetchAICImages(limit = 25, page = 1): Promise<MasonryImage[]> {
     const baseApi = "https://api.artic.edu/api/v1/artworks";
     const iiifBase = "https://www.artic.edu/iiif/2";
@@ -131,8 +76,6 @@ export default function App(): JSX.Element {
       // initialColumnHeights, // optional; seed if continuing from previous page
       align: 'start',
     })
-
-    console.log(view)
 
     return items;
   }
