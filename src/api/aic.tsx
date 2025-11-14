@@ -40,6 +40,16 @@ async function buildMasonryImage(artwork: Artwork): Promise<MasonryImage | null>
     return null;
   }
 
+  // if max size in info.sizes is less than 843, return null
+  // info.sizes is an array of { width: number, height: number }
+  const maxSize = Array.isArray(info.sizes)
+    ? Math.max(...info.sizes.map((s: any) => Number(s.width)).filter((w: number) => Number.isFinite(w)))
+    : 0;
+  if (maxSize < 843) {
+    return null;
+  }
+
+
   const imageUrl = `${IIIF_BASE}/${artwork.image_id}/full/843,/0/default.jpg`;
 
   return {
@@ -50,8 +60,9 @@ async function buildMasonryImage(artwork: Artwork): Promise<MasonryImage | null>
       <img
         src={imageUrl}
         alt={artwork.title ?? "Artwork"}
-        loading="lazy"
-        style={{ width: "100%", height: "auto", display: "block" }}
+        loading="eager"
+        width={450}
+        // style={{ width: "100%", height: "auto", display: "block" }}
       />
     ),
   };

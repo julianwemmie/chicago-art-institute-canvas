@@ -45,10 +45,11 @@
 
 .gridLabel {
   position: absolute;
-  background: rgba(255, 255, 255, 0.7);
+  background: rgb(255, 255, 255);
   padding: 2px 4px;
   border-radius: 3px;
   transform: translate(2px, 2px);
+  color: black;
 }
 
 .dragging {
