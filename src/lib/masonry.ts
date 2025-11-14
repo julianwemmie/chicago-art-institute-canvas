@@ -3,10 +3,11 @@ import type { GridDataResult, GridItem, Viewport } from "../components/PannableG
 
 export type MasonryImage = {
   id?: string | number;
-  width?: number;
-  height?: number;
+  width: number;
+  height: number;
   content: ReactNode;
 };
+
 
 export interface PlacedImage {
   id?: string | number;
@@ -14,14 +15,12 @@ export interface PlacedImage {
   y: number;
   width: number;
   height: number;
-  content: ReactNode;
-  columnId: number;
+  content: React.ReactNode;
+  columnIndex: number;
 }
 
 interface ColumnState {
-  id: number;
-  index: number;
-  x: number;
+  columnIndex: number;
   items: PlacedImage[];
 }
 
@@ -32,16 +31,12 @@ interface MasonryState {
   originX: number;
   originY: number;
   generator: () => Promise<MasonryImage>;
-  columns: ColumnState[];
-  columnMap: Map<number, ColumnState>;
   placedImages: PlacedImage[];
-  nextColumnId: number;
+  columns: Map<number, ColumnState>;
 }
 
 export type ColumnSnapshot = {
-  id: number;
-  index: number;
-  x: number;
+  columnIndex: number;
   items: PlacedImage[];
 };
 
@@ -54,31 +49,22 @@ type MasonryLayoutConfig = {
   generator: () => Promise<MasonryImage>;
 };
 
-type Gap = { start: number; end: number };
-type InsertionMode = "top" | "bottom" | "middle";
-
-const GAP_EPSILON = 0.5;
-const MAX_GAP_ITERATIONS = 400;
-const MAX_ITEMS_PER_GAP = 1000;
+const BASE_OVERSCAN_MULTIPLIER = 1;
 
 export class MasonryLayout {
   private state: MasonryState;
+  private columnBounds: { min: number | null; max: number | null } = {
+    min: null,
+    max: null,
+  };
   private initializationPromise: Promise<void> | null = null;
-  private workQueue: Promise<void> = Promise.resolve();
-  private readonly columnSpan: number;
+  private pendingUpdate: Promise<void> = Promise.resolve();
   private readonly horizontalOverscan: number;
   private readonly verticalOverscan: number;
 
   constructor(config: MasonryLayoutConfig) {
-    const {
-      columnWidth,
-      columnGap,
-      rowGap,
-      originX = 0,
-      originY = 0,
-      generator,
-    } = config;
-
+    const { columnWidth, columnGap, rowGap, originX = 0, originY = 0, generator } =
+      config;
     this.state = {
       columnWidth,
       columnGap,
@@ -86,34 +72,34 @@ export class MasonryLayout {
       originX,
       originY,
       generator,
-      columns: [],
-      columnMap: new Map(),
       placedImages: [],
-      nextColumnId: 0,
+      columns: new Map(),
     };
-
-    this.columnSpan = columnWidth + columnGap;
-    this.horizontalOverscan = Math.max(this.columnSpan, columnWidth);
-    this.verticalOverscan = Math.max(columnWidth * 2, rowGap * 4, 1);
+    const span = columnWidth + columnGap;
+    this.horizontalOverscan = Math.max(span, 1) * BASE_OVERSCAN_MULTIPLIER;
+    this.verticalOverscan =
+      Math.max(columnWidth, rowGap * 2, 1) * BASE_OVERSCAN_MULTIPLIER;
   }
 
+  /**
+   * Returns the items that intersect the requested viewport after ensuring
+   * initialization and border expansion happen in deterministic order.
+   */
   public async getItems(view: Viewport): Promise<GridDataResult> {
     await this.ensureInitialized(view);
-    await this.enqueue(() => this.processBorders(view));
+    await this.scheduleBorderUpdates(view);
     return {
-      items: this.collectVisibleItems(view),
+      items: this.state.placedImages.map((placed) => this.toGridItem(placed)),
       debugItems: this.state.placedImages.map((placed) => this.toGridItem(placed)),
     };
   }
 
-  private enqueue(task: () => Promise<void>): Promise<void> {
-    const next = this.workQueue.then(task);
-    this.workQueue = next.catch(() => {});
-    return next;
+  private get columnSpan(): number {
+    return this.state.columnWidth + this.state.columnGap;
   }
 
   private async ensureInitialized(view: Viewport): Promise<void> {
-    if (this.state.columns.length > 0) {
+    if (this.state.columns.size > 0) {
       return;
     }
     if (!this.initializationPromise) {
@@ -125,419 +111,350 @@ export class MasonryLayout {
   }
 
   private async initialize(view: Viewport): Promise<void> {
-    const initialColumn = this.ensureColumn(0);
-    const visibleBottom = view.y + view.height + this.verticalOverscan;
-    await this.buildColumnFromOrigin(initialColumn, visibleBottom);
-
-    const { min, max } = this.getColumnRange(
-      view.x - this.horizontalOverscan,
-      view.x + view.width + this.horizontalOverscan,
-    );
-    for (let idx = min; idx <= max; idx++) {
-      const column = this.ensureColumn(idx);
-      if (column === initialColumn) {
-        continue;
-      }
-      await this.buildColumnFromOrigin(column, visibleBottom);
-    }
-  }
-
-  private async buildColumnFromOrigin(
-    column: ColumnState,
-    targetBottom: number,
-  ): Promise<void> {
-    let cursor = column.items.length
-      ? column.items[column.items.length - 1].y +
-        column.items[column.items.length - 1].height +
-        this.state.rowGap
-      : this.state.originY;
-
-    while (cursor < targetBottom) {
-      const image = await this.state.generator();
-      const height = this.computeScaledHeight(image);
-      if (height == null) {
-        continue;
-      }
-      const placed = this.createPlacedImage(image, column, cursor, height);
-      const index = this.insertPlacedImage(column, placed);
-      this.healColumnAfterInsertion(column, index, "bottom");
-      cursor = placed.y + placed.height + this.state.rowGap;
+    this.ensureColumnsCoverViewport(view);
+    const targetBottom = view.y + view.height + this.verticalOverscan;
+    const { min, max } = this.getRequiredColumnRange(view);
+    for (let columnIndex = min; columnIndex <= max; columnIndex++) {
+      const column = this.getOrCreateColumn(columnIndex);
+      await this.fillColumnDownward(column, targetBottom);
     }
   }
 
   private ensureColumnsCoverViewport(view: Viewport): void {
-    const viewLeft = view.x - this.horizontalOverscan;
-    const viewRight = view.x + view.width + this.horizontalOverscan;
-    const { min, max } = this.getColumnRange(viewLeft, viewRight);
-    this.ensureColumnsForRange(min, max);
+    const { min, max } = this.getRequiredColumnRange(view);
+    for (let idx = min; idx <= max; idx++) {
+      this.getOrCreateColumn(idx);
+    }
+  }
+
+  private scheduleBorderUpdates(view: Viewport): Promise<void> {
+    // Queue border expansion work to avoid simultaneous mutations.
+    const scheduled = this.pendingUpdate.then(() => this.processBorders(view));
+    this.pendingUpdate = scheduled.catch(() => {});
+    return scheduled;
   }
 
   private async processBorders(view: Viewport): Promise<void> {
     this.ensureColumnsCoverViewport(view);
-    await this.processTopBorder(view);
-    await this.processRightBorder(view);
-    await this.processLeftBorder(view);
-    await this.processBottomBorder(view);
+    // Border expansion order: top → right → left → bottom keeps healing predictable.
+    await this.extendColumnsOnTop(view);
+    await this.extendColumnsOnRight(view);
+    await this.extendColumnsOnLeft(view);
+    await this.extendColumnsOnBottom(view);
   }
 
-  private async processTopBorder(view: Viewport): Promise<void> {
-    const columns = this.getColumnsIntersectingView(view);
-    const top = view.y - this.verticalOverscan;
-    const bottom = view.y;
-    for (const column of columns) {
-      await this.ensureColumnCoverage(column, top, bottom, "top");
-    }
+  private getRequiredColumnRange(view: Viewport): { min: number; max: number } {
+    const startX = view.x - this.horizontalOverscan;
+    const endX = view.x + view.width + this.horizontalOverscan;
+    return this.getColumnRangeForXSpan(startX, endX);
   }
 
-  private async processBottomBorder(view: Viewport): Promise<void> {
-    const columns = this.getColumnsIntersectingView(view);
-    const top = view.y + view.height;
-    const bottom = view.y + view.height + this.verticalOverscan;
-    for (const column of columns) {
-      await this.ensureColumnCoverage(column, top, bottom, "bottom");
-    }
-  }
-
-  private async processRightBorder(view: Viewport): Promise<void> {
-    const borderLeft = view.x + view.width;
-    const borderRight = borderLeft + this.horizontalOverscan;
-    const { min, max } = this.getColumnRange(borderLeft, borderRight);
-    this.ensureColumnsForRange(min, max);
-    const coverageTop = view.y - this.verticalOverscan;
-    const coverageBottom = view.y + view.height + this.verticalOverscan;
-    for (let idx = min; idx <= max; idx++) {
-      const column = this.ensureColumn(idx);
-      await this.ensureColumnCoverage(column, coverageTop, coverageBottom, "middle");
-    }
-  }
-
-  private async processLeftBorder(view: Viewport): Promise<void> {
-    const borderRight = view.x;
-    const borderLeft = borderRight - this.horizontalOverscan;
-    const { min, max } = this.getColumnRange(borderLeft, borderRight);
-    this.ensureColumnsForRange(min, max);
-    const coverageTop = view.y - this.verticalOverscan;
-    const coverageBottom = view.y + view.height + this.verticalOverscan;
-    for (let idx = max; idx >= min; idx--) {
-      const column = this.ensureColumn(idx);
-      await this.ensureColumnCoverage(column, coverageTop, coverageBottom, "middle");
-    }
-  }
-
-  private getColumnsIntersectingView(view: Viewport): ColumnState[] {
-    const windowLeft = view.x - this.horizontalOverscan;
-    const windowRight = view.x + view.width + this.horizontalOverscan;
-    return this.state.columns.filter((column) => {
-      const colLeft = column.x;
-      const colRight = column.x + this.state.columnWidth;
-      return colRight >= windowLeft && colLeft <= windowRight;
-    });
-  }
-
-  private async ensureColumnCoverage(
-    column: ColumnState,
-    startY: number,
-    endY: number,
-    mode: InsertionMode,
-  ): Promise<void> {
-    if (startY >= endY - GAP_EPSILON) {
-      return;
-    }
-    let iterations = 0;
-    while (iterations++ < MAX_GAP_ITERATIONS) {
-      const gap = this.findNextGap(column, startY, endY);
-      if (!gap) {
-        break;
-      }
-      const gapMode = this.resolveGapMode(gap, startY, endY, mode);
-      await this.fillGap(column, gap, gapMode);
-    }
-  }
-
-  private resolveGapMode(
-    gap: Gap,
-    intervalStart: number,
-    intervalEnd: number,
-    fallback: InsertionMode,
-  ): InsertionMode {
-    const nearTop = gap.start <= intervalStart + this.state.rowGap + GAP_EPSILON;
-    const nearBottom = gap.end >= intervalEnd - this.state.rowGap - GAP_EPSILON;
-    if (nearTop && !nearBottom) {
-      return "top";
-    }
-    if (nearBottom && !nearTop) {
-      return "bottom";
-    }
-    if (nearTop && nearBottom) {
-      return fallback;
-    }
-    return "middle";
-  }
-
-  private findNextGap(
-    column: ColumnState,
-    startY: number,
-    endY: number,
-  ): Gap | null {
-    if (startY >= endY - GAP_EPSILON) {
-      return null;
-    }
-    const items = column.items;
-    let cursor = startY;
-
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const topLimit = item.y - this.state.rowGap;
-      const bottomLimit = item.y + item.height + this.state.rowGap;
-
-      if (bottomLimit <= startY) {
-        continue;
-      }
-      if (topLimit >= endY) {
-        break;
-      }
-
-      if (cursor < topLimit - GAP_EPSILON) {
-        const gapStart = Math.max(cursor, startY);
-        const gapEnd = Math.min(topLimit, endY);
-        if (gapEnd - gapStart > GAP_EPSILON) {
-          return { start: gapStart, end: gapEnd };
-        }
-      }
-
-      if (cursor < bottomLimit) {
-        cursor = bottomLimit;
-      }
-      if (cursor >= endY - GAP_EPSILON) {
-        return null;
-      }
-    }
-
-    if (cursor < endY - GAP_EPSILON) {
-      return { start: cursor, end: endY };
-    }
-    return null;
-  }
-
-  private async fillGap(
-    column: ColumnState,
-    gap: Gap,
-    mode: InsertionMode,
-  ): Promise<void> {
-    let cursor = gap.start;
-    let insertions = 0;
-
-    while (
-      cursor < gap.end - GAP_EPSILON &&
-      insertions < MAX_ITEMS_PER_GAP
-    ) {
-      const previous = this.getNeighborBefore(column, cursor);
-      if (previous) {
-        cursor = Math.max(
-          cursor,
-          previous.item.y + previous.item.height + this.state.rowGap,
-        );
-      }
-
-      if (cursor >= gap.end - GAP_EPSILON) {
-        break;
-      }
-
-      const image = await this.state.generator();
-      const height = this.computeScaledHeight(image);
-      if (height == null) {
-        continue;
-      }
-      const placed = this.createPlacedImage(image, column, cursor, height);
-      const index = this.insertPlacedImage(column, placed);
-      this.healColumnAfterInsertion(column, index, mode);
-
-      const actualBottom =
-        column.items[index].y + column.items[index].height + this.state.rowGap;
-      if (actualBottom <= cursor + GAP_EPSILON) {
-        cursor += this.state.rowGap;
-      } else {
-        cursor = actualBottom;
-      }
-      insertions += 1;
-    }
-  }
-
-  private getNeighborBefore(
-    column: ColumnState,
-    y: number,
-  ): { item: PlacedImage; index: number } | null {
-    const items = column.items;
-    if (items.length === 0) {
-      return null;
-    }
-    let low = 0;
-    let high = items.length - 1;
-    let match: number | null = null;
-    while (low <= high) {
-      const mid = Math.floor((low + high) / 2);
-      if (items[mid].y < y) {
-        match = mid;
-        low = mid + 1;
-      } else {
-        high = mid - 1;
-      }
-    }
-    if (match == null) {
-      return null;
-    }
-    return { item: items[match], index: match };
-  }
-
-  private shiftRange(
-    column: ColumnState,
-    startIndex: number,
-    endIndex: number,
-    delta: number,
-  ): void {
-    if (!Number.isFinite(delta) || Math.abs(delta) < GAP_EPSILON) {
-      return;
-    }
-    for (let i = startIndex; i <= endIndex; i++) {
-      column.items[i].y += delta;
-    }
-  }
-
-  private healColumnAfterInsertion(
-    column: ColumnState,
-    index: number,
-    mode: InsertionMode,
-  ): void {
-    const checkPrev = mode !== "top";
-    const checkNext = mode !== "bottom";
-    let iterations = 0;
-
-    while (iterations++ < column.items.length) {
-      let moved = false;
-      const item = column.items[index];
-      if (!item) {
-        break;
-      }
-
-      const prev = column.items[index - 1];
-      if (checkPrev && prev) {
-        const desiredY = prev.y + prev.height + this.state.rowGap;
-        const delta = desiredY - item.y;
-        if (delta > GAP_EPSILON) {
-          this.shiftRange(column, index, column.items.length - 1, delta);
-          moved = true;
-          continue;
-        }
-      }
-
-      const next = column.items[index + 1];
-      if (checkNext && next) {
-        const maxY = next.y - this.state.rowGap - item.height;
-        const delta = item.y - maxY;
-        if (delta > GAP_EPSILON) {
-          this.shiftRange(column, 0, index, -delta);
-          moved = true;
-          continue;
-        }
-      }
-
-      if (!moved) {
-        break;
-      }
-    }
-  }
-
-  private insertPlacedImage(column: ColumnState, placed: PlacedImage): number {
-    const index = this.findInsertIndex(column, placed.y);
-    column.items.splice(index, 0, placed);
-    this.state.placedImages.push(placed);
-    return index;
-  }
-
-  private findInsertIndex(column: ColumnState, y: number): number {
-    let low = 0;
-    let high = column.items.length;
-    while (low < high) {
-      const mid = Math.floor((low + high) / 2);
-      if (column.items[mid].y < y) {
-        low = mid + 1;
-      } else {
-        high = mid;
-      }
-    }
-    return low;
-  }
-
-  private ensureColumnsForRange(min: number, max: number): void {
-    for (let idx = min; idx <= max; idx++) {
-      this.ensureColumn(idx);
-    }
-  }
-
-  private ensureColumn(index: number): ColumnState {
-    const existing = this.state.columnMap.get(index);
-    if (existing) {
-      return existing;
-    }
-    const column: ColumnState = {
-      id: this.state.nextColumnId++,
-      index,
-      x: this.getColumnX(index),
-      items: [],
-    };
-    const insertAt = this.state.columns.findIndex((col) => col.index > index);
-    if (insertAt === -1) {
-      this.state.columns.push(column);
-    } else {
-      this.state.columns.splice(insertAt, 0, column);
-    }
-    this.state.columnMap.set(index, column);
-    return column;
-  }
-
-  private getColumnX(index: number): number {
-    return this.state.originX + index * this.columnSpan;
-  }
-
-  private getColumnRange(startX: number, endX: number): { min: number; max: number } {
+  private getColumnRangeForXSpan(startX: number, endX: number): {
+    min: number;
+    max: number;
+  } {
     const left = Math.min(startX, endX);
     const right = Math.max(startX, endX);
-    const span = this.columnSpan || 1;
+    const span = this.columnSpan;
     const min = Math.floor((left - this.state.originX) / span);
     const max = Math.floor((right - this.state.originX) / span);
     return { min, max };
   }
 
+  private getColumnIndexesInRange(view: Viewport): number[] {
+    const { min, max } = this.getRequiredColumnRange(view);
+    const indexes: number[] = [];
+    for (let idx = min; idx <= max; idx++) {
+      if (this.state.columns.has(idx)) {
+        indexes.push(idx);
+      }
+    }
+    return indexes;
+  }
+
+  private getColumnX(columnIndex: number): number {
+    return this.state.originX + columnIndex * this.columnSpan;
+  }
+
+  private getOrCreateColumn(columnIndex: number): ColumnState {
+    const existing = this.state.columns.get(columnIndex);
+    if (existing) {
+      return existing;
+    }
+    const column: ColumnState = { columnIndex, items: [] };
+    this.state.columns.set(columnIndex, column);
+    if (this.columnBounds.min === null || columnIndex < this.columnBounds.min) {
+      this.columnBounds.min = columnIndex;
+    }
+    if (this.columnBounds.max === null || columnIndex > this.columnBounds.max) {
+      this.columnBounds.max = columnIndex;
+    }
+    return column;
+  }
+
+  private async fillColumnDownward(
+    column: ColumnState,
+    targetBottom: number,
+  ): Promise<void> {
+    let cursorY =
+      column.items.length > 0
+        ? column.items[column.items.length - 1].y +
+          column.items[column.items.length - 1].height +
+          this.state.rowGap
+        : this.state.originY;
+    // Keep requesting images until the column reaches the bottom border plus overscan.
+    while (cursorY < targetBottom) {
+      const image = await this.state.generator();
+      const scaledHeight = this.computeScaledHeight(image);
+      if (scaledHeight === null) {
+        continue;
+      }
+      const placed = this.createPlacedImage(
+        image,
+        column.columnIndex,
+        cursorY,
+        scaledHeight,
+      );
+      column.items.push(placed);
+      this.state.placedImages.push(placed);
+      healColumnAfterBottomInsertion(
+        column,
+        column.items.length - 1,
+        this.state,
+      );
+      cursorY = column.items[column.items.length - 1].y +
+        column.items[column.items.length - 1].height +
+        this.state.rowGap;
+    }
+  }
+
+  private async extendColumnsOnTop(view: Viewport): Promise<void> {
+    const borderTop = view.y - this.verticalOverscan;
+    // Scan left → right across columns filling the uncovered top border.
+    const columnIndexes = this.getColumnIndexesInRange(view);
+    for (const columnIndex of columnIndexes) {
+      const column = this.state.columns.get(columnIndex);
+      if (!column || column.items.length === 0) {
+        continue;
+      }
+      await this.extendColumnUpward(column, borderTop);
+    }
+  }
+
+  private async extendColumnUpward(
+    column: ColumnState,
+    borderTop: number,
+  ): Promise<void> {
+    while (true) {
+      const topItem = column.items[0];
+      if (!topItem || topItem.y <= borderTop) {
+        break;
+      }
+      const image = await this.state.generator();
+      const scaledHeight = this.computeScaledHeight(image);
+      if (scaledHeight === null) {
+        continue;
+      }
+      const y = topItem.y - this.state.rowGap - scaledHeight;
+      const placed = this.createPlacedImage(
+        image,
+        column.columnIndex,
+        y,
+        scaledHeight,
+      );
+      column.items.unshift(placed);
+      this.state.placedImages.push(placed);
+      healColumnAfterTopInsertion(column, 0, this.state);
+    }
+  }
+
+  private async extendColumnsOnBottom(view: Viewport): Promise<void> {
+    const borderBottom = view.y + view.height + this.verticalOverscan;
+    // Extend each column downward along the bottom border with newly generated images.
+    const columnIndexes = this.getColumnIndexesInRange(view);
+    for (const columnIndex of columnIndexes) {
+      const column = this.state.columns.get(columnIndex);
+      if (!column || column.items.length === 0) {
+        continue;
+      }
+      await this.extendColumnDownward(column, borderBottom);
+    }
+  }
+
+  private async extendColumnDownward(
+    column: ColumnState,
+    borderBottom: number,
+  ): Promise<void> {
+    while (true) {
+      const last = column.items[column.items.length - 1];
+      const y =
+        last !== undefined
+          ? last.y + last.height + this.state.rowGap
+          : this.state.originY;
+      if (y >= borderBottom) {
+        break;
+      }
+      const image = await this.state.generator();
+      const scaledHeight = this.computeScaledHeight(image);
+      if (scaledHeight === null) {
+        continue;
+      }
+      const placed = this.createPlacedImage(
+        image,
+        column.columnIndex,
+        y,
+        scaledHeight,
+      );
+      column.items.push(placed);
+      this.state.placedImages.push(placed);
+      healColumnAfterBottomInsertion(
+        column,
+        column.items.length - 1,
+        this.state,
+      );
+    }
+  }
+
+  private async extendColumnsOnRight(view: Viewport): Promise<void> {
+    // When the viewport exposes new horizontal space to the right, build entire columns top→bottom.
+    const { max: requiredMax } = this.getRequiredColumnRange(view);
+    if (requiredMax === undefined || this.columnBounds.max === null) {
+      return;
+    }
+    for (
+      let columnIndex = (this.columnBounds.max ?? 0);
+      columnIndex <= requiredMax;
+      columnIndex++
+    ) {
+      const column = this.getOrCreateColumn(columnIndex);
+      if (column.items.length === 0) {
+        await this.populateNewColumn(column, view);
+      }
+    }
+  }
+
+  private async extendColumnsOnLeft(view: Viewport): Promise<void> {
+    // Mirror the right border logic when adding new columns on the left side.
+    const { min: requiredMin } = this.getRequiredColumnRange(view);
+    if (requiredMin === undefined || this.columnBounds.min === null) {
+      return;
+    }
+    for (
+      let columnIndex = (this.columnBounds.min ?? 0);
+      columnIndex >= requiredMin;
+      columnIndex--
+    ) {
+      const column = this.getOrCreateColumn(columnIndex);
+      if (column.items.length === 0) {
+        await this.populateNewColumn(column, view);
+      }
+    }
+  }
+
+  private async populateNewColumn(
+    column: ColumnState,
+    view: Viewport,
+  ): Promise<void> {
+    if (column.items.length > 0) {
+      return;
+    }
+    const borderTop = view.y - this.verticalOverscan;
+    const borderBottom = view.y + view.height + this.verticalOverscan;
+    let cursorY = borderTop;
+    // Walk the new column top → bottom and fill it so the visible border is covered.
+    while (cursorY < borderBottom) {
+      const image = await this.state.generator();
+      const scaledHeight = this.computeScaledHeight(image);
+      if (scaledHeight === null) {
+        continue;
+      }
+      const placed = this.createPlacedImage(
+        image,
+        column.columnIndex,
+        cursorY,
+        scaledHeight,
+      );
+      column.items.push(placed);
+      this.state.placedImages.push(placed);
+      healColumnAfterBottomInsertion(
+        column,
+        column.items.length - 1,
+        this.state,
+      );
+      cursorY = column.items[column.items.length - 1].y +
+        column.items[column.items.length - 1].height +
+        this.state.rowGap;
+    }
+  }
+
+  private collectVisibleItems(view: Viewport): GridItem[] {
+    // Apply overscan margins so rendering doesn't pop when the camera moves slightly.
+    const windowLeft = view.x - this.horizontalOverscan;
+    const windowRight = view.x + view.width + this.horizontalOverscan;
+    const windowTop = view.y - this.verticalOverscan;
+    const windowBottom = view.y + view.height + this.verticalOverscan;
+    return this.state.placedImages
+      .filter((placed) => {
+        const itemRight = placed.x + placed.width;
+        const itemBottom = placed.y + placed.height;
+        const horizontalIntersect = itemRight >= windowLeft && placed.x <= windowRight;
+        const verticalIntersect = itemBottom >= windowTop && placed.y <= windowBottom;
+        return horizontalIntersect && verticalIntersect;
+      })
+      .map((placed) => ({
+        id: placed.id,
+        x: placed.x,
+        y: placed.y,
+        content: placed.content,
+      }));
+  }
+
   private computeScaledHeight(image: MasonryImage): number | null {
+    const naturalWidth = image.width;
+    const naturalHeight = image.height;
     if (
-      !Number.isFinite(image.width ?? NaN) ||
-      !Number.isFinite(image.height ?? NaN) ||
-      !image.width ||
-      !image.height
+      !Number.isFinite(naturalWidth) ||
+      naturalWidth <= 0 ||
+      !Number.isFinite(naturalHeight) ||
+      naturalHeight <= 0
     ) {
       return null;
     }
     return Math.max(
       1,
-      Math.round((image.height * this.state.columnWidth) / image.width),
+      Math.round((naturalHeight * this.state.columnWidth) / naturalWidth),
     );
   }
 
   private createPlacedImage(
     image: MasonryImage,
-    column: ColumnState,
+    columnIndex: number,
     y: number,
     height: number,
   ): PlacedImage {
     return {
       id: image.id,
-      x: column.x,
+      x: this.getColumnX(columnIndex),
       y,
       width: this.state.columnWidth,
       height,
       content: image.content,
-      columnId: column.id,
+      columnIndex,
     };
+  }
+
+  /**
+   * Helpers primarily aimed at testing/inspection.
+   */
+  public getDebugPlacedImages(): PlacedImage[] {
+    return this.state.placedImages.map((img) => ({ ...img }));
+  }
+
+  public getDebugColumns(): ColumnSnapshot[] {
+    return Array.from(this.state.columns.values()).map((column) => ({
+      columnIndex: column.columnIndex,
+      items: column.items.map((item) => ({ ...item })),
+    }));
   }
 
   private toGridItem(placed: PlacedImage): GridItem {
@@ -548,34 +465,81 @@ export class MasonryLayout {
       content: placed.content,
     };
   }
+}
 
-  private collectVisibleItems(view: Viewport): GridItem[] {
-    const windowLeft = view.x - this.horizontalOverscan;
-    const windowRight = view.x + view.width + this.horizontalOverscan;
-    const windowTop = view.y - this.verticalOverscan;
-    const windowBottom = view.y + view.height + this.verticalOverscan;
 
-    return this.state.placedImages
-      .filter((placed) => {
-        const right = placed.x + placed.width;
-        const bottom = placed.y + placed.height;
-        const horizontal = right >= windowLeft && placed.x <= windowRight;
-        const vertical = bottom >= windowTop && placed.y <= windowBottom;
-        return horizontal && vertical;
-      })
-      .map((placed) => this.toGridItem(placed));
+// Check if two placed images shrink their vertical gap below the allowed tolerance.
+function rectanglesOverlapVertically(
+  a: PlacedImage,
+  b: PlacedImage,
+  verticalGapTolerance: number = 0,
+): boolean {
+  return (
+    a.y + a.height + verticalGapTolerance > b.y &&
+    b.y + b.height + verticalGapTolerance > a.y
+  );
+}
+
+function healColumnAfterTopInsertion(
+  column: ColumnState,
+  insertedIndex: number,
+  state: MasonryState,
+): void {
+  // Shift the newly inserted top item (and anyone above) upward if it overlaps the next row.
+  const inserted = column.items[insertedIndex];
+  const below = column.items[insertedIndex + 1];
+  if (!below) {
+    return;
   }
-
-  public getDebugPlacedImages(): PlacedImage[] {
-    return this.state.placedImages.map((img) => ({ ...img }));
+  if (
+    !rectanglesOverlapVertically(inserted, below, -state.rowGap)
+  ) {
+    return;
   }
-
-  public getDebugColumns(): ColumnSnapshot[] {
-    return this.state.columns.map((column) => ({
-      id: column.id,
-      index: column.index,
-      x: column.x,
-      items: column.items.map((item) => ({ ...item })),
-    }));
+  const desiredY = below.y - state.rowGap - inserted.height;
+  const delta = desiredY - inserted.y;
+  if (!Number.isFinite(delta) || delta === 0) {
+    return;
+  }
+  for (let i = 0; i <= insertedIndex; i++) {
+    column.items[i].y += delta;
   }
 }
+
+function healColumnAfterBottomInsertion(
+  column: ColumnState,
+  insertedIndex: number,
+  state: MasonryState,
+): void {
+  // Push the bottom insertion (and all rows below) downward if overlap occurs.
+  const inserted = column.items[insertedIndex];
+  const above = column.items[insertedIndex - 1];
+  if (!above) {
+    return;
+  }
+  if (
+    !rectanglesOverlapVertically(above, inserted, -state.rowGap)
+  ) {
+    return;
+  }
+  const desiredY = above.y + above.height + state.rowGap;
+  const delta = desiredY - inserted.y;
+  if (!Number.isFinite(delta) || delta === 0) {
+    return;
+  }
+  for (let i = insertedIndex; i < column.items.length; i++) {
+    column.items[i].y += delta;
+  }
+}
+
+// Example usage:
+// const generator = createAICImageGenerator();
+// const layout = new MasonryLayout({
+//   columnWidth: 200,
+//   columnGap: 16,
+//   rowGap: 16,
+//   originX: 0,
+//   originY: 0,
+//   generator,
+// });
+// const dataFn = (view: Viewport) => layout.getItems(view);
