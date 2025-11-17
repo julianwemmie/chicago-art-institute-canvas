@@ -120,14 +120,14 @@ function AICImageCard({
         />
         <div className={`aic-image-card__overlay${isActive ? " is-visible" : ""}`}>
           <div className="aic-image-card__actions">
-            <button
+            {/* <button
               type="button"
               className="aic-image-card__action"
               onClick={handleFavorite}
             >
               <HeartIcon />
               <span>Favorite</span>
-            </button>
+            </button> */}
             <button
               type="button"
               className="aic-image-card__action"
@@ -148,9 +148,9 @@ function HeartIcon(): JSX.Element {
   return (
     <svg
       aria-hidden="true"
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
+      width="24"
+      height="24"
+      viewBox="0 -2 24 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
@@ -166,8 +166,8 @@ function InfoIcon(): JSX.Element {
   return (
     <svg
       aria-hidden="true"
-      width="18"
-      height="18"
+      width="24"
+      height="24"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -186,8 +186,8 @@ function ExternalIcon(): JSX.Element {
   return (
     <svg
       aria-hidden="true"
-      width="16"
-      height="16"
+      width="20"
+      height="20"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
