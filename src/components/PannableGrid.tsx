@@ -119,6 +119,16 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
       width: 0,
       height: 0,
     });
+    const [dragging, setDragging] = useState(false);
+    const activePointersRef = useRef<
+      Map<number, { x: number; y: number; pointerType: string }>
+    >(new Map());
+    const pinchStateRef = useRef<{
+      pointerIds: [number, number];
+      initialDistance: number;
+      initialZoomPercent: number;
+      origin?: { x: number; y: number };
+    } | null>(null);
     const zoomLimits = useMemo(() => {
       const safeMin = Math.max(minZoomPercent, 1);
       const safeMax = Math.max(maxZoomPercent, 1);
@@ -154,6 +164,54 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
     useEffect(() => {
       cameraRef.current = camera;
     }, [camera]);
+
+    const updatePointerInfo = useCallback(
+      (event: { pointerId: number; clientX: number; clientY: number; pointerType: string }) => {
+        activePointersRef.current.set(event.pointerId, {
+          x: event.clientX,
+          y: event.clientY,
+          pointerType: event.pointerType,
+        });
+      },
+      [],
+    );
+
+    const removePointerInfo = useCallback((pointerId: number) => {
+      activePointersRef.current.delete(pointerId);
+    }, []);
+
+    const tryStartPinch = useCallback(() => {
+      if (pinchStateRef.current) return;
+      const touches = Array.from(activePointersRef.current.entries()).filter(
+        ([, info]) => info.pointerType === 'touch',
+      );
+      if (touches.length < 2) return;
+      const [firstId, firstInfo] = touches[touches.length - 2];
+      const [secondId, secondInfo] = touches[touches.length - 1];
+      if (!firstInfo || !secondInfo) {
+        return;
+      }
+      const initialDistance = Math.hypot(
+        secondInfo.x - firstInfo.x,
+        secondInfo.y - firstInfo.y,
+      );
+      if (initialDistance < 1) return;
+      const rect = containerRef.current?.getBoundingClientRect();
+      const origin = rect
+        ? {
+            x: (firstInfo.x + secondInfo.x) / 2 - rect.left,
+            y: (firstInfo.y + secondInfo.y) / 2 - rect.top,
+          }
+        : undefined;
+      pinchStateRef.current = {
+        pointerIds: [firstId, secondId],
+        initialDistance,
+        initialZoomPercent: zoomRef.current * 100,
+        origin,
+      };
+      dragStateRef.current = null;
+      setDragging(false);
+    }, [setDragging]);
 
     const applyRecenter = useCallback(
       (nextCamera: Camera) => {
@@ -294,7 +352,6 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
       lastY: number;
       lastTime: number;
     } | null>(null);
-    const [dragging, setDragging] = useState(false);
     const velocityRef = useRef({ vx: 0, vy: 0 });
     const inertiaFrameRef = useRef<number | null>(null);
     const inertiaStateRef = useRef<{
@@ -365,12 +422,19 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
 
     const handlePointerDown = useCallback(
       (event: React.PointerEvent<HTMLDivElement>) => {
-        if (event.button !== 0) return;
+        if (event.button !== 0 && event.pointerType !== 'touch') return;
         const node = containerRef.current;
         if (!node) return;
         event.preventDefault();
         node.setPointerCapture(event.pointerId);
         stopInertia();
+        if (event.pointerType === 'touch') {
+          updatePointerInfo(event);
+          tryStartPinch();
+          if (pinchStateRef.current) {
+            return;
+          }
+        }
         velocityRef.current = { vx: 0, vy: 0 };
         dragStateRef.current = {
           pointerId: event.pointerId,
@@ -383,11 +447,39 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
         };
         setDragging(true);
       },
-      [stopInertia],
+      [stopInertia, tryStartPinch, updatePointerInfo],
     );
 
     const handlePointerMove = useCallback(
       (event: React.PointerEvent<HTMLDivElement>) => {
+        if (event.pointerType === 'touch') {
+          updatePointerInfo(event);
+        }
+        const pinch = pinchStateRef.current;
+        if (pinch) {
+          const first = activePointersRef.current.get(pinch.pointerIds[0]);
+          const second = activePointersRef.current.get(pinch.pointerIds[1]);
+          if (!first || !second) {
+            pinchStateRef.current = null;
+            return;
+          }
+          event.preventDefault();
+          const distance = Math.hypot(second.x - first.x, second.y - first.y);
+          if (distance <= 0) {
+            return;
+          }
+          const rect = containerRef.current?.getBoundingClientRect();
+          const origin = rect
+            ? {
+                x: (first.x + second.x) / 2 - rect.left,
+                y: (first.y + second.y) / 2 - rect.top,
+              }
+            : pinch.origin;
+          const scale = distance / pinch.initialDistance;
+          const nextPercent = pinch.initialZoomPercent * scale;
+          applyZoom(nextPercent, origin);
+          return;
+        }
         const drag = dragStateRef.current;
         if (!drag || drag.pointerId !== event.pointerId) return;
         event.preventDefault();
@@ -409,26 +501,42 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
         velocityRef.current.vy =
           velocityRef.current.vy * (1 - smoothing) + (panDy / dt) * smoothing;
       },
-      [schedulePan],
+      [applyZoom, schedulePan, updatePointerInfo],
     );
 
     const endDrag = useCallback(
       (event: React.PointerEvent<HTMLDivElement>) => {
-        const drag = dragStateRef.current;
-        if (!drag || drag.pointerId !== event.pointerId) return;
         const node = containerRef.current;
         node?.releasePointerCapture(event.pointerId);
+        if (event.pointerType === 'touch') {
+          removePointerInfo(event.pointerId);
+        }
+        if (pinchStateRef.current?.pointerIds.includes(event.pointerId)) {
+          pinchStateRef.current = null;
+          return;
+        }
+        const drag = dragStateRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
         dragStateRef.current = null;
         setDragging(false);
         startInertia();
       },
-      [startInertia],
+      [removePointerInfo, setDragging, startInertia],
     );
 
-    const handlePointerCaptureLost = useCallback(() => {
-      dragStateRef.current = null;
-      setDragging(false);
-    }, []);
+    const handlePointerCaptureLost = useCallback(
+      (event: React.PointerEvent<HTMLDivElement>) => {
+        if (event.pointerType === 'touch') {
+          removePointerInfo(event.pointerId);
+        }
+        if (pinchStateRef.current?.pointerIds.includes(event.pointerId)) {
+          pinchStateRef.current = null;
+        }
+        dragStateRef.current = null;
+        setDragging(false);
+      },
+      [removePointerInfo, setDragging],
+    );
 
     const view: Viewport = useMemo(
       () => ({
