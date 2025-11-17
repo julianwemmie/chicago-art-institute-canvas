@@ -163,6 +163,9 @@ export const usePointerPan = ({
       if (event.button !== 0 && event.pointerType !== 'touch') return;
       const node = containerRef.current;
       if (!node) return;
+      if (event.pointerType === 'touch') {
+        node.setPointerCapture(event.pointerId);
+      }
       stopInertia();
       if (event.pointerType === 'touch') {
         updatePointerInfo(event.nativeEvent);
