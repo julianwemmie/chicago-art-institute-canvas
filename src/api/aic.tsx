@@ -16,6 +16,7 @@ type GeneratorOptions = {
   batchSize?: number;
   refillThreshold?: number;
   imageWidth?: number;
+  seed?: number;
 };
 
 async function buildMasonryImage(artwork: Artwork, options: GeneratorOptions): Promise<MasonryImage | null> {
@@ -57,7 +58,6 @@ async function buildMasonryImage(artwork: Artwork, options: GeneratorOptions): P
         alt={artwork.title ?? "Artwork"}
         loading="eager"
         width={ options.imageWidth ?? width }
-        // style={{ width: "100%", height: "auto", display: "block" }}
       />
     ),
   };
@@ -77,20 +77,65 @@ export function createAICImageGenerator(
 ): GeneratorFunc {
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
   const refillThreshold = options.refillThreshold ?? DEFAULT_REFILL_THRESHOLD;
+  const seed = options.seed ?? Math.random();
 
   let buffer: MasonryImage[] = [];
-  let currentPage = 1;
+  let nextPage: number | null = null;
+  let totalPages: number | null = null;
   let inflight: Promise<void> | null = null;
   const seenIds = new Set<number | string>();
 
+  const ensurePaginationInfo = async (): Promise<void> => {
+    if (totalPages !== null && nextPage !== null) {
+      return;
+    }
+
+    try {
+      const metaRes = await fetch(`${BASE_API}?page=1&limit=${batchSize}&fields=id`);
+      if (!metaRes.ok) {
+        nextPage = 1;
+        totalPages = null;
+        return;
+      }
+      const metaPayload = await metaRes.json();
+      const pages = Number(metaPayload?.pagination?.total_pages);
+      if (Number.isFinite(pages) && pages > 0) {
+        totalPages = pages;
+        const normalizedSeed = Math.abs(seed % 1);
+        nextPage = Math.floor(normalizedSeed * pages) + 1
+      } else {
+        totalPages = null;
+        nextPage = 1;
+      }
+    } catch {
+      nextPage = 1;
+      totalPages = null;
+    }
+  };
+
+  const updateNextPage = (currentPage: number): void => {
+    if (totalPages && totalPages > 0) {
+      nextPage = currentPage >= totalPages ? 1 : currentPage + 1;
+    } else {
+      nextPage = currentPage + 1;
+    }
+  };
+
   const fetchNextBatch = async (): Promise<void> => {
-    const url = `${BASE_API}?page=${currentPage}&limit=${batchSize}&fields=id,title,image_id`;
-    currentPage += 1;
+    await ensurePaginationInfo();
+
+    const requestedPage = nextPage ?? 1;
+    const url = `${BASE_API}?page=${requestedPage}&limit=${batchSize}&fields=id,title,image_id`;
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`AIC API error: ${response.status} ${response.statusText}`);
     }
     const payload = await response.json();
+    const pages = Number(payload?.pagination?.total_pages);
+    if (Number.isFinite(pages) && pages > 0) {
+      totalPages = pages;
+    }
+    updateNextPage(requestedPage);
     const artworks: Artwork[] = Array.isArray(payload?.data) ? payload.data : [];
 
     const newImages = await Promise.all(
