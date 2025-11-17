@@ -52,6 +52,7 @@ type MasonryLayoutConfig = {
 
 const BASE_OVERSCAN_MULTIPLIER = 1;
 const POSITION_EPSILON = 0.1;
+const MAX_FETCH_ATTEMPTS = 10;
 
 const nearlyEqual = (a: number, b: number, epsilon: number = POSITION_EPSILON): boolean =>
   Math.abs(a - b) <= epsilon;
@@ -180,13 +181,13 @@ export class MasonryLayout {
 
   private async extendColumnsOnTop(view: Viewport): Promise<void> {
     const columnIndexes = this.getColumnIndexesInRange(view);
+    const { top: borderTop } = this.getHorizontalBorders(view);
     for (const columnIndex of columnIndexes) {
       const column = this.state.columns.get(columnIndex);
       if (!column || column.items.length === 0) {
         continue;
       }
       const imagesInViewport = this.getColumnItemsInViewport(column.columnIndex, view);
-      const borderTop = view.y - this.verticalOverscan;
       if (imagesInViewport[0] && nearlyEqual(imagesInViewport[0].y, borderTop)) {
         continue
       }
@@ -207,7 +208,6 @@ export class MasonryLayout {
     const topIndex = column.items.indexOf(topViewPortItem);
     const aboveItem = topIndex > 0 ? column.items[topIndex - 1] : undefined;
 
-
     if (
       aboveItem &&
       nearlyEqual(
@@ -218,23 +218,11 @@ export class MasonryLayout {
       return
     }
 
-    let image: MasonryImage;
-    let scaledHeight: number | null;
-    let fetchAttempts = 0;
-
-    while (true) {
-      fetchAttempts++;
-      if (fetchAttempts > 10) {
-        console.warn('extendColumnUpward: exceeded max fetch attempts');
-        return;
-      }
-      image = await this.state.generator();
-      scaledHeight = this.computeScaledHeight(image);
-      if (scaledHeight === null) {
-        continue;
-      }
-      break;
+    const imageData = await this.fetchImageWithScaledHeight("extendColumnUpward");
+    if (!imageData) {
+      return;
     }
+    const { image, scaledHeight } = imageData;
 
     if (aboveItem && 
       (topViewPortItem.y - this.state.rowGap - scaledHeight < aboveItem.y + aboveItem.height + this.state.rowGap)
@@ -253,22 +241,19 @@ export class MasonryLayout {
       y,
       scaledHeight,
     );
-    column.items.push(placed);
-    column.items.sort((a, b) => a.y - b.y);
-    this.state.placedImages.push(placed);
-    this.state.placedImages.sort((a, b) => a.y - b.y);
+    this.registerPlacedImage(column, placed);
   }
 
   private async extendColumnsOnBottom(view: Viewport): Promise<void> {
     // Extend each column downward along the bottom border with newly generated images.
     const columnIndexes = this.getColumnIndexesInRange(view);
+    const { bottom: borderBottom } = this.getHorizontalBorders(view);
     for (const columnIndex of columnIndexes) {
       const column = this.state.columns.get(columnIndex);
       if (!column || column.items.length === 0) {
         continue;
       }
       const imagesInViewport = this.getColumnItemsInViewport(column.columnIndex, view);
-      const borderBottom = view.y + view.height + this.verticalOverscan;
       const lastImageInViewport = imagesInViewport[imagesInViewport.length - 1];
       if (lastImageInViewport?.y + lastImageInViewport?.height + this.state.rowGap >= borderBottom) {
         continue
@@ -300,23 +285,11 @@ export class MasonryLayout {
       return
     }
 
-    let image: MasonryImage;
-    let scaledHeight: number | null;
-    let fetchAttempts = 0;
-
-    while (true) {
-      fetchAttempts++;
-      if (fetchAttempts > 10) {
-        console.warn('extendColumnDownward: exceeded max fetch attempts');
-        return;
-      }
-      image = await this.state.generator();
-      scaledHeight = this.computeScaledHeight(image);
-      if (scaledHeight === null) {
-        continue;
-      }
-      break;
+    const imageData = await this.fetchImageWithScaledHeight("extendColumnDownward");
+    if (!imageData) {
+      return;
     }
+    const { image, scaledHeight } = imageData;
 
     if (belowItem &&
       (bottomViewPortItem.y + bottomViewPortItem.height + this.state.rowGap + scaledHeight > belowItem.y - this.state.rowGap)
@@ -335,10 +308,7 @@ export class MasonryLayout {
       y,
       scaledHeight,
     );
-    column.items.push(placed);
-    column.items.sort((a, b) => a.y - b.y);
-    this.state.placedImages.push(placed);
-    this.state.placedImages.sort((a, b) => a.y - b.y);
+    this.registerPlacedImage(column, placed);
   }
 
   private async extendColumnsOnRight(view: Viewport): Promise<void> {
@@ -347,27 +317,7 @@ export class MasonryLayout {
     if (requiredMax === undefined) {
       return;
     }
-    const column = this.getOrCreateColumn(requiredMax);
-
-    // get images in within viewport
-    const imagesInViewport = this.getColumnItemsInViewport(column.columnIndex, view);
-    if (imagesInViewport.length === 0) {
-      await this.populateNewColumn(column, view);
-      return
-    }
-
-    const borderTop = view.y - this.verticalOverscan;
-    if (imagesInViewport[0] && nearlyEqual(imagesInViewport[0].y, borderTop)) {
-      return
-    }
-    await this.extendColumnUpward(column, imagesInViewport);
-
-    const borderBottom = view.y + view.height + this.verticalOverscan;
-    const lastImageInViewport = imagesInViewport[imagesInViewport.length - 1];
-    if (lastImageInViewport?.y + lastImageInViewport?.height + this.state.rowGap >= borderBottom) {
-      return
-    }
-    await this.extendColumnDownward(column, imagesInViewport);
+    await this.extendBorderColumn(requiredMax, view);
   }
 
   
@@ -378,28 +328,7 @@ export class MasonryLayout {
     if (requiredMin === undefined) {
       return;
     }
-    const column = this.getOrCreateColumn(requiredMin);
-
-    // get images in within viewport
-    const imagesInViewport = this.getColumnItemsInViewport(column.columnIndex, view);
-    
-    if (imagesInViewport.length === 0) {
-      await this.populateNewColumn(column, view);
-      return
-    }
-
-    const borderTop = view.y - this.verticalOverscan;
-    if (imagesInViewport[0] && nearlyEqual(imagesInViewport[0].y, borderTop)) {
-      return
-    }
-    await this.extendColumnUpward(column, imagesInViewport);
-
-    const borderBottom = view.y + view.height + this.verticalOverscan;
-    const lastImageInViewport = imagesInViewport[imagesInViewport.length - 1];
-    if (lastImageInViewport?.y + lastImageInViewport?.height + this.state.rowGap >= borderBottom) {
-      return
-    }
-    await this.extendColumnDownward(column, imagesInViewport);
+    await this.extendBorderColumn(requiredMin, view);
   }
 
   private getColumnItemsInViewport(columnIndex: number, view: Viewport): PlacedImage[] {
@@ -407,8 +336,7 @@ export class MasonryLayout {
     if (!column) {
       return [];
     }
-    const borderTop = view.y - this.verticalOverscan;
-    const borderBottom = view.y + view.height + this.verticalOverscan;
+    const { top: borderTop, bottom: borderBottom } = this.getHorizontalBorders(view);
     let itemsInView = [];
     for (const item of column.items) {
       if (item.y >= borderTop && item.y <= borderBottom) {
@@ -422,8 +350,7 @@ export class MasonryLayout {
     column: ColumnState,
     view: Viewport,
   ): Promise<void> {
-    const borderTop = view.y - this.verticalOverscan;
-    const borderBottom = view.y + view.height + this.verticalOverscan;
+    const { top: borderTop, bottom: borderBottom } = this.getHorizontalBorders(view);
     let cursorY = borderTop;
     // Walk the new column top → bottom and fill it so the visible border is covered.
     while (cursorY < borderBottom) {
@@ -538,5 +465,63 @@ export class MasonryLayout {
       y: placed.y,
       content: placed.content,
     };
+  }
+
+  private getHorizontalBorders(view: Viewport): { top: number; bottom: number } {
+    return {
+      top: view.y - this.verticalOverscan,
+      bottom: view.y + view.height + this.verticalOverscan,
+    };
+  }
+
+  private async extendBorderColumn(columnIndex: number, view: Viewport): Promise<void> {
+    const column = this.getOrCreateColumn(columnIndex);
+    const imagesInViewport = this.getColumnItemsInViewport(column.columnIndex, view);
+    if (imagesInViewport.length === 0) {
+      await this.populateNewColumn(column, view);
+      return;
+    }
+
+    const { top: borderTop, bottom: borderBottom } = this.getHorizontalBorders(view);
+    if (imagesInViewport[0] && nearlyEqual(imagesInViewport[0].y, borderTop)) {
+      return;
+    }
+    await this.extendColumnUpward(column, imagesInViewport);
+
+    const lastImageInViewport = imagesInViewport[imagesInViewport.length - 1];
+    if (
+      lastImageInViewport?.y + lastImageInViewport?.height + this.state.rowGap >=
+      borderBottom
+    ) {
+      return;
+    }
+    await this.extendColumnDownward(column, imagesInViewport);
+  }
+
+  private async fetchImageWithScaledHeight(
+    context: string,
+  ): Promise<{ image: MasonryImage; scaledHeight: number } | null> {
+    let fetchAttempts = 0;
+
+    while (true) {
+      fetchAttempts++;
+      if (fetchAttempts > MAX_FETCH_ATTEMPTS) {
+        console.warn(`${context}: exceeded max fetch attempts`);
+        return null;
+      }
+      const image = await this.state.generator();
+      const scaledHeight = this.computeScaledHeight(image);
+      if (scaledHeight === null) {
+        continue;
+      }
+      return { image, scaledHeight };
+    }
+  }
+
+  private registerPlacedImage(column: ColumnState, placed: PlacedImage): void {
+    column.items.push(placed);
+    column.items.sort((a, b) => a.y - b.y);
+    this.state.placedImages.push(placed);
+    this.state.placedImages.sort((a, b) => a.y - b.y);
   }
 }
