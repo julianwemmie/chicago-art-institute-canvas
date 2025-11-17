@@ -27,7 +27,12 @@ import styles from './PannableGrid.module.css';
  *   return queryItems(view, prevView);
  * };
  *
- * <PannableGrid getItems={getItems} overscan={600} />
+ * <PannableGrid
+ *   getItems={getItems}
+ *   overscan={600}
+ *   minZoomPercent={50}
+ *   maxZoomPercent={175}
+ * />
  */
 
 const cx = (...classes: Array<string | undefined | false>) =>
@@ -57,6 +62,9 @@ export type PannableGridProps = {
   worldClassName?: string;
   overscan?: number;
   recenterThreshold?: number;
+  minZoomPercent?: number;
+  maxZoomPercent?: number;
+  initialZoomPercent?: number;
 };
 
 export type PannableGridHandle = {
@@ -75,6 +83,10 @@ const MINIMAP_SIZE = 150;
 const MINIMAP_ITEM_SIZE = 4;
 const INERTIA_DECAY = 0.004;
 const VELOCITY_EPSILON = 0.02;
+const DEFAULT_MIN_ZOOM_PERCENT = 50;
+const DEFAULT_MAX_ZOOM_PERCENT = 200;
+const DEFAULT_INITIAL_ZOOM_PERCENT = 100;
+const ZOOM_WHEEL_SENSITIVITY = 0.0030;
 
 export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
   (
@@ -88,6 +100,9 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
       worldClassName,
       overscan = 400,
       recenterThreshold = 10000,
+      minZoomPercent = DEFAULT_MIN_ZOOM_PERCENT,
+      maxZoomPercent = DEFAULT_MAX_ZOOM_PERCENT,
+      initialZoomPercent = DEFAULT_INITIAL_ZOOM_PERCENT,
     },
     ref,
   ) => {
@@ -104,6 +119,37 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
       width: 0,
       height: 0,
     });
+    const zoomLimits = useMemo(() => {
+      const safeMin = Math.max(minZoomPercent, 1);
+      const safeMax = Math.max(maxZoomPercent, 1);
+      const min = Math.min(safeMin, safeMax);
+      const max = Math.max(safeMin, safeMax);
+      return { min, max };
+    }, [minZoomPercent, maxZoomPercent]);
+    const clampZoomPercent = useCallback(
+      (value: number) => {
+        if (!Number.isFinite(value)) {
+          return zoomLimits.min;
+        }
+        if (value < zoomLimits.min) return zoomLimits.min;
+        if (value > zoomLimits.max) return zoomLimits.max;
+        return value;
+      },
+      [zoomLimits],
+    );
+    const [zoomPercent, setZoomPercent] = useState(() =>
+      clampZoomPercent(initialZoomPercent),
+    );
+    const zoom = zoomPercent / 100;
+    const zoomRef = useRef(zoom);
+
+    useEffect(() => {
+      zoomRef.current = zoom;
+    }, [zoom]);
+
+    useEffect(() => {
+      setZoomPercent((prev) => clampZoomPercent(prev));
+    }, [clampZoomPercent]);
 
     useEffect(() => {
       cameraRef.current = camera;
@@ -189,18 +235,58 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
       return () => observer.disconnect();
     }, []);
 
+    const applyZoom = useCallback(
+      (nextPercent: number, origin?: { x: number; y: number }) => {
+        const targetPercent = clampZoomPercent(nextPercent);
+        const currentZoom = zoomRef.current;
+        const nextZoom = targetPercent / 100;
+        if (nextZoom === currentZoom) {
+          return;
+        }
+        const fallbackFocus = {
+          x: viewportSize.width / 2,
+          y: viewportSize.height / 2,
+        };
+        const focus = origin ?? fallbackFocus;
+        setCameraState((prev) => {
+          const worldFocusX = prev.x + focus.x / currentZoom;
+          const worldFocusY = prev.y + focus.y / currentZoom;
+          return {
+            x: worldFocusX - focus.x / nextZoom,
+            y: worldFocusY - focus.y / nextZoom,
+          };
+        });
+        setZoomPercent(targetPercent);
+      },
+      [clampZoomPercent, setCameraState, viewportSize.height, viewportSize.width],
+    );
+
     useEffect(() => {
       const el = containerRef.current;
       if (!el) return;
       const handleWheel = (event: WheelEvent) => {
         event.preventDefault();
-        schedulePan(event.deltaX, event.deltaY);
+        if (event.ctrlKey || event.metaKey) {
+          const rect = el.getBoundingClientRect();
+          const origin = rect
+            ? {
+                x: event.clientX - rect.left,
+                y: event.clientY - rect.top,
+              }
+            : undefined;
+          const zoomScale = Math.exp(-event.deltaY * ZOOM_WHEEL_SENSITIVITY);
+          const nextPercent = zoomRef.current * zoomScale * 100;
+          applyZoom(nextPercent, origin);
+          return;
+        }
+        const currentZoom = zoomRef.current;
+        schedulePan(event.deltaX / currentZoom, event.deltaY / currentZoom);
       };
       el.addEventListener('wheel', handleWheel, { passive: false });
       return () => {
         el.removeEventListener('wheel', handleWheel);
       };
-    }, [schedulePan]);
+    }, [applyZoom, schedulePan]);
 
     const dragStateRef = useRef<{
       pointerId: number;
@@ -309,8 +395,9 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
         const dy = event.clientY - drag.lastY;
         drag.lastX = event.clientX;
         drag.lastY = event.clientY;
-        const panDx = -dx;
-        const panDy = -dy;
+        const currentZoom = zoomRef.current;
+        const panDx = -dx / currentZoom;
+        const panDy = -dy / currentZoom;
         schedulePan(panDx, panDy);
         const now =
           typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -347,10 +434,10 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
       () => ({
         x: camera.x,
         y: camera.y,
-        width: viewportSize.width,
-        height: viewportSize.height,
+        width: viewportSize.width / zoom,
+        height: viewportSize.height / zoom,
       }),
-      [camera, viewportSize],
+      [camera, viewportSize, zoom],
     );
 
     const expandedView: Viewport = useMemo(
@@ -446,7 +533,7 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
     );
 
     const renderBase = renderBaseRef.current;
-    const transform = `translate3d(${renderBase.x - camera.x}px, ${
+    const transform = `scale(${zoom}) translate3d(${renderBase.x - camera.x}px, ${
       renderBase.y - camera.y
     }px, 0)`;
 

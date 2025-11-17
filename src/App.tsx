@@ -36,7 +36,13 @@ export default function App(): JSX.Element {
 
   return (
     <div className="app">
-      <PannableGrid getItems={getItems} overscan={1000} debug />
+      <PannableGrid
+        getItems={getItems}
+        overscan={1000}
+        minZoomPercent={60}
+        maxZoomPercent={175}
+        // debug
+      />
     </div>
   );
 }

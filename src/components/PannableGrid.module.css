@@ -12,6 +12,7 @@
   position: absolute;
   inset: 0;
   will-change: transform;
+  transform-origin: 0 0;
 }
 
 .item {
