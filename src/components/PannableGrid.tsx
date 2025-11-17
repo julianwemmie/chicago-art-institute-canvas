@@ -83,10 +83,11 @@ const MINIMAP_SIZE = 150;
 const MINIMAP_ITEM_SIZE = 4;
 const INERTIA_DECAY = 0.004;
 const VELOCITY_EPSILON = 0.02;
+const STILLNESS_TIMEOUT_MS = 120;
 const DEFAULT_MIN_ZOOM_PERCENT = 50;
 const DEFAULT_MAX_ZOOM_PERCENT = 200;
 const DEFAULT_INITIAL_ZOOM_PERCENT = 100;
-const ZOOM_WHEEL_SENSITIVITY = 0.0030;
+const ZOOM_WHEEL_SENSITIVITY = 0.0060;
 
 export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
   (
@@ -535,6 +536,11 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
         const drag = dragStateRef.current;
         if (!drag || drag.pointerId !== event.pointerId) return;
         dragStateRef.current = null;
+        const now =
+          typeof performance !== 'undefined' ? performance.now() : Date.now();
+        if (now - drag.lastTime > STILLNESS_TIMEOUT_MS) {
+          velocityRef.current = { vx: 0, vy: 0 };
+        }
         setDragging(false);
         startInertia();
       },
