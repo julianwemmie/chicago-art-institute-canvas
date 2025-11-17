@@ -63,6 +63,10 @@ async function buildMasonryImage(artwork: Artwork, options: GeneratorOptions): P
   };
 }
 
+export type GeneratorFunc = () => Promise<MasonryImage>;
+
+let totalImagesGenerated = 0;
+
 /**
  * Returns a generator function that yields a fresh MasonryImage each time it is called.
  * The generator keeps a buffer (default 25) populated with Art Institute of Chicago artworks
@@ -70,7 +74,7 @@ async function buildMasonryImage(artwork: Artwork, options: GeneratorOptions): P
  */
 export function createAICImageGenerator(
   options: GeneratorOptions = {}
-): () => Promise<MasonryImage> {
+): GeneratorFunc {
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
   const refillThreshold = options.refillThreshold ?? DEFAULT_REFILL_THRESHOLD;
 
@@ -124,7 +128,7 @@ export function createAICImageGenerator(
     });
   };
 
-  return async (): Promise<MasonryImage> => {
+  const generator: GeneratorFunc = async (): Promise<MasonryImage> => {
     if (buffer.length === 0) {
       await ensureBatch();
     }
@@ -135,6 +139,10 @@ export function createAICImageGenerator(
     if (buffer.length <= refillThreshold) {
       triggerRefill();
     }
+
+    totalImagesGenerated += 1;
     return next;
   };
+
+  return generator;
 }
