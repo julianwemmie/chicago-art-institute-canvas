@@ -1,8 +1,6 @@
-import React from "react";
-import { MasonryImage } from "../lib/masonry";
-
 const BASE_API = "https://api.artic.edu/api/v1/artworks";
 const IIIF_BASE = "https://www.artic.edu/iiif/2";
+const ARTWORK_PAGE_BASE = "https://www.artic.edu/artworks";
 const DEFAULT_BATCH_SIZE = 25;
 const DEFAULT_REFILL_THRESHOLD = 5;
 
@@ -12,14 +10,25 @@ type Artwork = {
   image_id: string | null;
 };
 
-type GeneratorOptions = {
+export type ArtworkImage = {
+  id: number;
+  title: string;
+  width: number;
+  height: number;
+  imageUrl: string;
+  infoUrl: string;
+};
+
+export type GeneratorOptions = {
   batchSize?: number;
   refillThreshold?: number;
   imageWidth?: number;
   seed?: number;
 };
 
-async function buildMasonryImage(artwork: Artwork, options: GeneratorOptions): Promise<MasonryImage | null> {
+export type DataGeneratorFunc = () => Promise<ArtworkImage>;
+
+async function buildArtworkImage(artwork: Artwork): Promise<ArtworkImage | null> {
   if (!artwork.image_id) {
     return null;
   }
@@ -36,8 +45,6 @@ async function buildMasonryImage(artwork: Artwork, options: GeneratorOptions): P
     return null;
   }
 
-  // if max size in info.sizes is less than 843, return null
-  // info.sizes is an array of { width: number, height: number }
   const maxSize = Array.isArray(info.sizes)
     ? Math.max(...info.sizes.map((s: any) => Number(s.width)).filter((w: number) => Number.isFinite(w)))
     : 0;
@@ -45,41 +52,31 @@ async function buildMasonryImage(artwork: Artwork, options: GeneratorOptions): P
     return null;
   }
 
-
   const imageUrl = `${IIIF_BASE}/${artwork.image_id}/full/843,/0/default.jpg`;
 
   return {
     id: artwork.id,
+    title: artwork.title ?? "Artwork",
     width,
     height,
-    content: (
-      <img
-        src={imageUrl}
-        alt={artwork.title ?? "Artwork"}
-        loading="eager"
-        width={ options.imageWidth ?? width }
-      />
-    ),
+    imageUrl,
+    infoUrl: `${ARTWORK_PAGE_BASE}/${artwork.id}`,
   };
 }
 
-export type GeneratorFunc = () => Promise<MasonryImage>;
-
-let totalImagesGenerated = 0;
-
 /**
- * Returns a generator function that yields a fresh MasonryImage each time it is called.
+ * Returns a generator function that yields a fresh artwork image each time it is called.
  * The generator keeps a buffer (default 25) populated with Art Institute of Chicago artworks
  * and refills the buffer as it gets low so callers always receive a unique image.
  */
-export function createAICImageGenerator(
+export function createAICImageDataGenerator(
   options: GeneratorOptions = {}
-): GeneratorFunc {
+): DataGeneratorFunc {
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
   const refillThreshold = options.refillThreshold ?? DEFAULT_REFILL_THRESHOLD;
   const seed = options.seed ?? Math.random();
 
-  let buffer: MasonryImage[] = [];
+  let buffer: ArtworkImage[] = [];
   let nextPage: number | null = null;
   let totalPages: number | null = null;
   let inflight: Promise<void> | null = null;
@@ -143,7 +140,7 @@ export function createAICImageGenerator(
         .filter((art) => art.image_id && !seenIds.has(art.id))
         .map(async (art) => {
           try {
-            return await buildMasonryImage(art, options);
+            return await buildArtworkImage(art);
           } catch {
             return null;
           }
@@ -173,7 +170,7 @@ export function createAICImageGenerator(
     });
   };
 
-  const generator: GeneratorFunc = async (): Promise<MasonryImage> => {
+  const generator: DataGeneratorFunc = async (): Promise<ArtworkImage> => {
     if (buffer.length === 0) {
       await ensureBatch();
     }
@@ -185,7 +182,6 @@ export function createAICImageGenerator(
       triggerRefill();
     }
 
-    totalImagesGenerated += 1;
     return next;
   };
 

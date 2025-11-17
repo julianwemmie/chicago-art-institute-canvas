@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PannableGrid, Viewport } from "./components/PannableGrid";
 import { MasonryLayout } from "./lib/masonry";
-import { createAICImageGenerator } from "./api/aic";
+import { ActiveCardProvider, createAICImageGenerator } from "./components/AICImageCard";
 
 const DEFAULT_IMAGE_WIDTH = 450;
 
@@ -13,9 +13,18 @@ export default function App(): JSX.Element {
     imageWidth = vwPixels - 50;
   }
 
-  const generator = useMemo(() => createAICImageGenerator({
-    imageWidth: imageWidth,
-  }), []);
+  const generator = useMemo(
+    () =>
+      createAICImageGenerator(
+        {
+          imageWidth: imageWidth,
+        },
+        {
+          columnWidth: imageWidth,
+        },
+      ),
+    [imageWidth],
+  );
   const layout = useMemo(
     () =>
       new MasonryLayout({
@@ -34,15 +43,17 @@ export default function App(): JSX.Element {
     [layout],
   );
 
-  return (
-    <div className="app">
-      <PannableGrid
-        getItems={getItems}
-        overscan={1000}
-        minZoomPercent={60}
-        maxZoomPercent={175}
-        // debug
-      />
-    </div>
+  return (  
+    <ActiveCardProvider>
+      <div className="app">
+        <PannableGrid
+          getItems={getItems}
+          overscan={1000}
+          minZoomPercent={60}
+          maxZoomPercent={175}
+          // debug
+        />
+      </div>
+    </ActiveCardProvider>
   );
 }

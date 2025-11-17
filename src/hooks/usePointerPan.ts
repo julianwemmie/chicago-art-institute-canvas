@@ -12,6 +12,7 @@ import type { SetCameraState } from './useCameraController';
 const INERTIA_DECAY = 0.004;
 const VELOCITY_EPSILON = 0.02;
 const STILLNESS_TIMEOUT_MS = 120;
+const DRAG_START_THRESHOLD = 5;
 
 type DOMPointerEvent = globalThis.PointerEvent;
 
@@ -27,9 +28,12 @@ type PinchState = {
 
 type DragState = {
   pointerId: number;
+  startX: number;
+  startY: number;
   lastX: number;
   lastY: number;
   lastTime: number;
+  started: boolean;
 } | null;
 
 type PointerPanOptions = {
@@ -159,8 +163,6 @@ export const usePointerPan = ({
       if (event.button !== 0 && event.pointerType !== 'touch') return;
       const node = containerRef.current;
       if (!node) return;
-      event.preventDefault();
-      node.setPointerCapture(event.pointerId);
       stopInertia();
       if (event.pointerType === 'touch') {
         updatePointerInfo(event.nativeEvent);
@@ -172,12 +174,15 @@ export const usePointerPan = ({
       velocityRef.current = { vx: 0, vy: 0 };
       dragStateRef.current = {
         pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
         lastX: event.clientX,
         lastY: event.clientY,
         lastTime:
           typeof performance !== 'undefined' ? performance.now() : Date.now(),
+        started: false,
       };
-      setDragging(true);
+      setDragging(false);
     },
     [containerRef, setDragging, stopInertia, tryStartPinch, updatePointerInfo],
   );
@@ -229,6 +234,23 @@ export const usePointerPan = ({
       }
       const drag = dragStateRef.current;
       if (!drag || drag.pointerId !== event.pointerId) return;
+      const totalDx = event.clientX - drag.startX;
+      const totalDy = event.clientY - drag.startY;
+      if (!drag.started) {
+        const distance = Math.hypot(totalDx, totalDy);
+        if (distance < DRAG_START_THRESHOLD) {
+          return;
+        }
+        const node = containerRef.current;
+        node?.setPointerCapture(event.pointerId);
+        drag.started = true;
+        drag.lastX = event.clientX;
+        drag.lastY = event.clientY;
+        drag.lastTime =
+          typeof performance !== 'undefined' ? performance.now() : Date.now();
+        setDragging(true);
+        return;
+      }
       event.preventDefault();
       const dx = event.clientX - drag.lastX;
       const dy = event.clientY - drag.lastY;
@@ -254,7 +276,9 @@ export const usePointerPan = ({
   const endDrag = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       const node = containerRef.current;
-      node?.releasePointerCapture(event.pointerId);
+      if (node?.hasPointerCapture(event.pointerId)) {
+        node.releasePointerCapture(event.pointerId);
+      }
       if (event.pointerType === 'touch') {
         removePointerInfo(event.pointerId);
       }
@@ -264,6 +288,11 @@ export const usePointerPan = ({
       }
       const drag = dragStateRef.current;
       if (!drag || drag.pointerId !== event.pointerId) return;
+      if (!drag.started) {
+        dragStateRef.current = null;
+        setDragging(false);
+        return;
+      }
       dragStateRef.current = null;
       const now =
         typeof performance !== 'undefined' ? performance.now() : Date.now();

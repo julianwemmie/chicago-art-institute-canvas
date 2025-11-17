@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import type { GridItem, Viewport } from "../components/PannableGrid";
-import { GeneratorFunc } from "../api/aic";
 
 export type MasonryImage = {
   id?: string | number;
@@ -8,6 +7,8 @@ export type MasonryImage = {
   height: number;
   content: ReactNode;
 };
+
+export type GeneratorFunc = () => Promise<MasonryImage>;
 
 
 export interface PlacedImage {
