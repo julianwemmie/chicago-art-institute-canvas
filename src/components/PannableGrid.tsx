@@ -128,6 +128,7 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
       initialDistance: number;
       initialZoomPercent: number;
       origin?: { x: number; y: number };
+      lastFocus?: { x: number; y: number };
     } | null>(null);
     const zoomLimits = useMemo(() => {
       const safeMin = Math.max(minZoomPercent, 1);
@@ -208,6 +209,7 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
         initialDistance,
         initialZoomPercent: zoomRef.current * 100,
         origin,
+        lastFocus: origin,
       };
       dragStateRef.current = null;
       setDragging(false);
@@ -464,20 +466,35 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
             return;
           }
           event.preventDefault();
-          const distance = Math.hypot(second.x - first.x, second.y - first.y);
-          if (distance <= 0) {
+          const rect = containerRef.current?.getBoundingClientRect();
+          const origin =
+            rect != null
+              ? {
+                  x: (first.x + second.x) / 2 - rect.left,
+                  y: (first.y + second.y) / 2 - rect.top,
+                }
+              : pinch.lastFocus ?? pinch.origin;
+          if (!origin) {
             return;
           }
-          const rect = containerRef.current?.getBoundingClientRect();
-          const origin = rect
-            ? {
-                x: (first.x + second.x) / 2 - rect.left,
-                y: (first.y + second.y) / 2 - rect.top,
-              }
-            : pinch.origin;
-          const scale = distance / pinch.initialDistance;
-          const nextPercent = pinch.initialZoomPercent * scale;
-          applyZoom(nextPercent, origin);
+          if (pinch.lastFocus) {
+            const currentZoom = zoomRef.current;
+            const focusDx = origin.x - pinch.lastFocus.x;
+            const focusDy = origin.y - pinch.lastFocus.y;
+            if (focusDx || focusDy) {
+              setCameraState((prev) => ({
+                x: prev.x - focusDx / currentZoom,
+                y: prev.y - focusDy / currentZoom,
+              }));
+            }
+          }
+          pinch.lastFocus = origin;
+          const distance = Math.hypot(second.x - first.x, second.y - first.y);
+          if (distance > 0) {
+            const scale = distance / pinch.initialDistance;
+            const nextPercent = pinch.initialZoomPercent * scale;
+            applyZoom(nextPercent, origin);
+          }
           return;
         }
         const drag = dragStateRef.current;
@@ -501,7 +518,7 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
         velocityRef.current.vy =
           velocityRef.current.vy * (1 - smoothing) + (panDy / dt) * smoothing;
       },
-      [applyZoom, schedulePan, updatePointerInfo],
+      [applyZoom, schedulePan, setCameraState, updatePointerInfo],
     );
 
     const endDrag = useCallback(
