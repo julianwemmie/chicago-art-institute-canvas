@@ -90,10 +90,7 @@ function AICImageCard({
     onFavorite?.(image);
   };
 
-  const handleDetails = (event: MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    onDetails?.(image);
-  };
+  const detailsUrl = image.infoUrl || image.imageUrl;
 
   return (
     <div
@@ -128,15 +125,20 @@ function AICImageCard({
               <HeartIcon />
               <span>Favorite</span>
             </button> */}
-            <button
-              type="button"
+            <a
               className="aic-image-card__action"
-              onClick={handleDetails}
+              href={detailsUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(event) => {
+                event.stopPropagation();
+                onDetails?.(image);
+              }}
             >
               <InfoIcon />
               <span>Details</span>
               <ExternalIcon />
-            </button>
+            </a>
           </div>
         </div>
       </div>

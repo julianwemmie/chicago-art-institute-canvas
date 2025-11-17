@@ -160,6 +160,7 @@ body {
   letter-spacing: 0.05em;
   /* text-transform: uppercase; */
   cursor: pointer;
+  text-decoration: none;
   transition: border-color 120ms ease-out, background-color 120ms ease-out, transform 120ms ease-out;
 }
 
