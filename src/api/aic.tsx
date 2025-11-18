@@ -16,6 +16,7 @@ export type ArtworkImage = {
   width: number;
   height: number;
   imageUrl: string;
+  largeImageUrl: string;
   infoUrl: string;
 };
 
@@ -53,6 +54,7 @@ async function buildArtworkImage(artwork: Artwork): Promise<ArtworkImage | null>
   }
 
   const imageUrl = `${IIIF_BASE}/${artwork.image_id}/full/400,/0/default.jpg`;
+  const largeImageUrl = `${IIIF_BASE}/${artwork.image_id}/full/843,/0/default.jpg`;
 
   return {
     id: artwork.id,
@@ -60,6 +62,7 @@ async function buildArtworkImage(artwork: Artwork): Promise<ArtworkImage | null>
     width,
     height,
     imageUrl,
+    largeImageUrl,
     infoUrl: `${ARTWORK_PAGE_BASE}/${artwork.id}`,
   };
 }

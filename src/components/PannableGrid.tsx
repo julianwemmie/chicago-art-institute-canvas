@@ -1,5 +1,7 @@
 import {
+  createContext,
   forwardRef,
+  useContext,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -33,6 +35,17 @@ const DEFAULT_MIN_ZOOM_PERCENT = 50;
 const DEFAULT_MAX_ZOOM_PERCENT = 200;
 const DEFAULT_INITIAL_ZOOM_PERCENT = 100;
 const ZOOM_WHEEL_SENSITIVITY = 0.006;
+
+type GridMetrics = { zoom: number; viewportWidth: number };
+const GridMetricsContext = createContext<GridMetrics | null>(null);
+
+export function useGridMetrics(): GridMetrics {
+  const ctx = useContext(GridMetricsContext);
+  if (!ctx) {
+    throw new Error('useGridMetrics must be used within a PannableGrid');
+  }
+  return ctx;
+}
 
 export type PannableGridProps = {
   items?: GridItem[];
@@ -200,51 +213,53 @@ export const PannableGrid = forwardRef<PannableGridHandle, PannableGridProps>(
     );
 
     return (
-      <div
-        ref={containerRef}
-        className={cx(styles.wrapper, className, dragging && styles.dragging)}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-        onLostPointerCapture={handlePointerCaptureLost}
-      >
+      <GridMetricsContext.Provider value={{ zoom, viewportWidth: viewportSize.width }}>
         <div
-          className={cx(styles.world, worldClassName)}
-          style={{ transform }}
+          ref={containerRef}
+          className={cx(styles.wrapper, className, dragging && styles.dragging)}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onLostPointerCapture={handlePointerCaptureLost}
         >
-          {renderableItems.map((item, index) => {
-            const key = item.id ?? `${item.x}:${item.y}:${index}`;
-            return (
-              <div
-                key={key}
-                className={styles.item}
-                style={{
-                  left: item.x - renderBase.x,
-                  top: item.y - renderBase.y,
-                }}
-              >
-                {item.content}
-              </div>
-            );
-          })}
+          <div
+            className={cx(styles.world, worldClassName)}
+            style={{ transform }}
+          >
+            {renderableItems.map((item, index) => {
+              const key = item.id ?? `${item.x}:${item.y}:${index}`;
+              return (
+                <div
+                  key={key}
+                  className={styles.item}
+                  style={{
+                    left: item.x - renderBase.x,
+                    top: item.y - renderBase.y,
+                  }}
+                >
+                  {item.content}
+                </div>
+              );
+            })}
+          </div>
+          <DebugOverlay
+            debug={debug}
+            view={view}
+            overscan={overscan}
+            renderBase={renderBase}
+            transform={transform}
+            gridSpacing={GRID_SPACING}
+          />
+          <DebugMiniMap
+            debug={debug}
+            currentItems={currentItems}
+            view={view}
+            minimapSize={MINIMAP_SIZE}
+            itemSize={MINIMAP_ITEM_SIZE}
+          />
         </div>
-        <DebugOverlay
-          debug={debug}
-          view={view}
-          overscan={overscan}
-          renderBase={renderBase}
-          transform={transform}
-          gridSpacing={GRID_SPACING}
-        />
-        <DebugMiniMap
-          debug={debug}
-          currentItems={currentItems}
-          view={view}
-          minimapSize={MINIMAP_SIZE}
-          itemSize={MINIMAP_ITEM_SIZE}
-        />
-      </div>
+      </GridMetricsContext.Provider>
     );
   },
 );

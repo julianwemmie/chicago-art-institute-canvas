@@ -1,6 +1,7 @@
 import {
   KeyboardEvent,
   MouseEvent,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -8,6 +9,7 @@ import {
   useState,
   createContext,
 } from "react";
+import { useGridMetrics } from "./PannableGrid";
 import { ArtworkImage, GeneratorOptions, createAICImageDataGenerator } from "../api/aic";
 import { MasonryImage } from "../lib/masonry";
 
@@ -91,6 +93,23 @@ function AICImageCard({
   const { activeId, setActiveId } = useActiveCard();
   const isActive = activeId === image.id;
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const { zoom, viewportWidth } = useGridMetrics();
+  const [useHighRes, setUseHighRes] = useState(false);
+  const displaySrc = useHighRes ? image.largeImageUrl : image.imageUrl;
+
+  const updateResolutionPreference = useCallback(() => {
+    const img = imgRef.current;
+    if (!img) return;
+    const viewportPixels =
+      viewportWidth ||
+      window.visualViewport?.width ||
+      window.innerWidth ||
+      0;
+    if (viewportPixels === 0) return;
+    const renderedWidth = img.getBoundingClientRect?.().width ?? 0;
+    if (renderedWidth === 0) return;
+    setUseHighRes(renderedWidth / viewportPixels >= 0.5);
+  }, [viewportWidth]);
 
   useEffect(() => {
     const img = imgRef.current;
@@ -137,7 +156,36 @@ function AICImageCard({
         finish();
       }
     };
-  }, [image.imageUrl, onImageLoadEnd, onImageLoadStart]);
+  }, [displaySrc, onImageLoadEnd, onImageLoadStart]);
+
+  useEffect(() => {
+    updateResolutionPreference();
+  }, [zoom, updateResolutionPreference]);
+
+  useEffect(() => {
+    const img = imgRef.current;
+    const observer =
+      typeof ResizeObserver !== "undefined" && img
+        ? new ResizeObserver(() => {
+            updateResolutionPreference();
+          })
+        : null;
+
+    if (observer && img) {
+      observer.observe(img);
+    }
+    const visualViewport = window.visualViewport;
+    visualViewport?.addEventListener("resize", updateResolutionPreference);
+    visualViewport?.addEventListener("scroll", updateResolutionPreference);
+    window.addEventListener("resize", updateResolutionPreference);
+
+    return () => {
+      observer?.disconnect();
+      visualViewport?.removeEventListener("resize", updateResolutionPreference);
+      visualViewport?.removeEventListener("scroll", updateResolutionPreference);
+      window.removeEventListener("resize", updateResolutionPreference);
+    };
+  }, [updateResolutionPreference]);
 
   const toggleOverlay = () => setActiveId(isActive ? null : image.id);
 
@@ -153,7 +201,7 @@ function AICImageCard({
     onFavorite?.(image);
   };
 
-  const detailsUrl = image.infoUrl || image.imageUrl;
+  const detailsUrl = image.infoUrl || image.largeImageUrl || image.imageUrl;
 
   return (
     <div
@@ -174,7 +222,7 @@ function AICImageCard({
       >
         <img
           ref={imgRef}
-          src={image.imageUrl}
+          src={displaySrc}
           alt={image.title ?? "Artwork"}
           loading="eager"
           style={{ display: "block", width: "100%", height: "auto", pointerEvents: "none" }}
