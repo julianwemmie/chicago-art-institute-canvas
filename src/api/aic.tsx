@@ -52,7 +52,7 @@ async function buildArtworkImage(artwork: Artwork): Promise<ArtworkImage | null>
     return null;
   }
 
-  const imageUrl = `${IIIF_BASE}/${artwork.image_id}/full/843,/0/default.jpg`;
+  const imageUrl = `${IIIF_BASE}/${artwork.image_id}/full/400,/0/default.jpg`;
 
   return {
     id: artwork.id,

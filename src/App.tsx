@@ -13,17 +13,29 @@ export default function App(): JSX.Element {
     imageWidth = vwPixels - 50;
   }
 
+  const [pendingImages, setPendingImages] = useState(0);
+
+  const handleImageLoadStart = useCallback(() => {
+    setPendingImages((count) => count + 1);
+  }, []);
+
+  const handleImageLoadEnd = useCallback(() => {
+    setPendingImages((count) => (count > 0 ? count - 1 : 0));
+  }, []);
+
   const generator = useMemo(
     () =>
       createAICImageGenerator(
         {
-          imageWidth: imageWidth,
+          imageWidth: imageWidth
         },
         {
           columnWidth: imageWidth,
+          onImageLoadStart: handleImageLoadStart,
+          onImageLoadEnd: handleImageLoadEnd,
         },
       ),
-    [imageWidth],
+    [handleImageLoadEnd, handleImageLoadStart, imageWidth],
   );
   const layout = useMemo(
     () =>
@@ -53,6 +65,12 @@ export default function App(): JSX.Element {
           maxZoomPercent={175}
           // debug
         />
+        {pendingImages > 4 && (
+          <div className="loading-indicator" role="status" aria-live="polite">
+            <span className="loading-indicator__label">Loading</span>
+            <span className="loading-indicator__spinner" aria-hidden="true" />
+          </div>
+        )}
       </div>
     </ActiveCardProvider>
   );

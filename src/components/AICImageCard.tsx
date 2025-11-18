@@ -1,4 +1,13 @@
-import { KeyboardEvent, MouseEvent, useContext, useMemo, useState, createContext } from "react";
+import {
+  KeyboardEvent,
+  MouseEvent,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  createContext,
+} from "react";
 import { ArtworkImage, GeneratorOptions, createAICImageDataGenerator } from "../api/aic";
 import { MasonryImage } from "../lib/masonry";
 
@@ -6,6 +15,8 @@ export type RenderOptions = {
   columnWidth?: number;
   onFavorite?: (image: ArtworkImage) => void;
   onDetails?: (image: ArtworkImage) => void;
+  onImageLoadStart?: () => void;
+  onImageLoadEnd?: () => void;
 };
 
 export function createAICImageGenerator(
@@ -36,6 +47,8 @@ export function buildMasonryImageFromData(
         columnWidth={columnWidth}
         onFavorite={renderOptions.onFavorite}
         onDetails={renderOptions.onDetails}
+        onImageLoadStart={renderOptions.onImageLoadStart}
+        onImageLoadEnd={renderOptions.onImageLoadEnd}
       />
     ),
   };
@@ -72,9 +85,59 @@ function AICImageCard({
   columnWidth,
   onFavorite,
   onDetails,
+  onImageLoadStart,
+  onImageLoadEnd,
 }: ImageCardProps): JSX.Element {
   const { activeId, setActiveId } = useActiveCard();
   const isActive = activeId === image.id;
+  const imgRef = useRef<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+
+    let started = false;
+    let finished = false;
+
+    const start = () => {
+      if (started) return;
+      started = true;
+      onImageLoadStart?.();
+    };
+
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      onImageLoadEnd?.();
+    };
+
+    // If the image is already cached, skip the loading state.
+    if (img.complete && img.naturalWidth > 0) {
+      finish();
+      return;
+    }
+
+    start();
+
+    const handleLoad = () => {
+      finish();
+    };
+    const handleError = () => {
+      finish();
+    };
+
+    img.addEventListener("load", handleLoad);
+    img.addEventListener("error", handleError);
+
+    return () => {
+      img.removeEventListener("load", handleLoad);
+      img.removeEventListener("error", handleError);
+      // If unmounted mid-load, make sure we clear the pending count.
+      if (started && !finished) {
+        finish();
+      }
+    };
+  }, [image.imageUrl, onImageLoadEnd, onImageLoadStart]);
 
   const toggleOverlay = () => setActiveId(isActive ? null : image.id);
 
@@ -110,6 +173,7 @@ function AICImageCard({
         aria-pressed={isActive}
       >
         <img
+          ref={imgRef}
           src={image.imageUrl}
           alt={image.title ?? "Artwork"}
           loading="eager"
@@ -168,8 +232,8 @@ function InfoIcon(): JSX.Element {
   return (
     <svg
       aria-hidden="true"
-      width="24"
-      height="24"
+      width="35"
+      height="35"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -188,8 +252,8 @@ function ExternalIcon(): JSX.Element {
   return (
     <svg
       aria-hidden="true"
-      width="20"
-      height="20"
+      width="30"
+      height="30  "
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
