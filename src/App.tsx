@@ -11,7 +11,7 @@ export default function App(): JSX.Element {
   let imageWidth = DEFAULT_IMAGE_WIDTH;
   const vwPixels = window.visualViewport?.width;
   if (vwPixels && vwPixels < DEFAULT_IMAGE_WIDTH) {
-    imageWidth = vwPixels - 50;
+    imageWidth = vwPixels - 150;
   }
 
   const [pendingImages, setPendingImages] = useState(0);

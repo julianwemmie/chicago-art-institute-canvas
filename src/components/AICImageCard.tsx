@@ -1,13 +1,17 @@
 import {
+  createContext,
   KeyboardEvent,
   MouseEvent,
+  type ReactNode,
+  type RefObject,
+  type Dispatch,
+  type SetStateAction,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
-  createContext,
 } from "react";
 import { useGridMetrics } from "./PannableGrid";
 import { ArtworkImage, GeneratorOptions, createAICImageDataGenerator } from "../api/aic";
@@ -63,12 +67,12 @@ type ImageCardProps = RenderOptions & {
 
 type ActiveCardContextValue = {
   activeId: number | null;
-  setActiveId: (id: number | null) => void;
+  setActiveId: Dispatch<SetStateAction<number | null>>;
 };
 
 const ActiveCardContext = createContext<ActiveCardContextValue | undefined>(undefined);
 
-export function ActiveCardProvider({ children }: { children: React.ReactNode }) {
+export function ActiveCardProvider({ children }: { children: ReactNode }) {
   const [activeId, setActiveId] = useState<number | null>(null);
   const value = useMemo(() => ({ activeId, setActiveId }), [activeId]);
   return <ActiveCardContext.Provider value={value}>{children}</ActiveCardContext.Provider>;
@@ -94,112 +98,38 @@ function AICImageCard({
   const isActive = activeId === image.id;
   const imgRef = useRef<HTMLImageElement | null>(null);
   const { zoom, viewportWidth } = useGridMetrics();
-  const [useHighRes, setUseHighRes] = useState(false);
-  const displaySrc = useHighRes ? image.largeImageUrl : image.imageUrl;
 
-  const updateResolutionPreference = useCallback(() => {
-    const img = imgRef.current;
-    if (!img) return;
-    const viewportPixels =
-      viewportWidth ||
-      window.visualViewport?.width ||
-      window.innerWidth ||
-      0;
-    if (viewportPixels === 0) return;
-    const renderedWidth = img.getBoundingClientRect?.().width ?? 0;
-    if (renderedWidth === 0) return;
-    setUseHighRes(renderedWidth / viewportPixels >= 0.6);
-  }, [viewportWidth]);
+  const isInViewport = useIsInViewport(imgRef);
+  const displaySrc = useResponsiveImageSource({
+    image,
+    imgRef,
+    viewportWidth,
+    zoom,
+    isInViewport,
+  });
+  useImageLoadLifecycle(imgRef, displaySrc, onImageLoadStart, onImageLoadEnd);
 
-  useEffect(() => {
-    const img = imgRef.current;
-    if (!img) return;
+  const toggleOverlay = useCallback(() => {
+    setActiveId((current) => (current === image.id ? null : image.id));
+  }, [image.id, setActiveId]);
 
-    let started = false;
-    let finished = false;
-
-    const start = () => {
-      if (started) return;
-      started = true;
-      onImageLoadStart?.();
-    };
-
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      onImageLoadEnd?.();
-    };
-
-    // If the image is already cached, skip the loading state.
-    if (img.complete && img.naturalWidth > 0) {
-      finish();
-      return;
-    }
-
-    start();
-
-    const handleLoad = () => {
-      finish();
-    };
-    const handleError = () => {
-      finish();
-    };
-
-    img.addEventListener("load", handleLoad);
-    img.addEventListener("error", handleError);
-
-    return () => {
-      img.removeEventListener("load", handleLoad);
-      img.removeEventListener("error", handleError);
-      // If unmounted mid-load, make sure we clear the pending count.
-      if (started && !finished) {
-        finish();
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggleOverlay();
       }
-    };
-  }, [displaySrc, onImageLoadEnd, onImageLoadStart]);
+    },
+    [toggleOverlay],
+  );
 
-  useEffect(() => {
-    updateResolutionPreference();
-  }, [zoom, updateResolutionPreference]);
-
-  useEffect(() => {
-    const img = imgRef.current;
-    const observer =
-      typeof ResizeObserver !== "undefined" && img
-        ? new ResizeObserver(() => {
-            updateResolutionPreference();
-          })
-        : null;
-
-    if (observer && img) {
-      observer.observe(img);
-    }
-    const visualViewport = window.visualViewport;
-    visualViewport?.addEventListener("resize", updateResolutionPreference);
-    visualViewport?.addEventListener("scroll", updateResolutionPreference);
-    window.addEventListener("resize", updateResolutionPreference);
-
-    return () => {
-      observer?.disconnect();
-      visualViewport?.removeEventListener("resize", updateResolutionPreference);
-      visualViewport?.removeEventListener("scroll", updateResolutionPreference);
-      window.removeEventListener("resize", updateResolutionPreference);
-    };
-  }, [updateResolutionPreference]);
-
-  const toggleOverlay = () => setActiveId(isActive ? null : image.id);
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      toggleOverlay();
-    }
-  };
-
-  const handleFavorite = (event: MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    onFavorite?.(image);
-  };
+  const handleFavorite = useCallback(
+    (event: MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      onFavorite?.(image);
+    },
+    [image, onFavorite],
+  );
 
   const detailsUrl = image.infoUrl || image.largeImageUrl || image.imageUrl;
 
@@ -256,6 +186,142 @@ function AICImageCard({
       </div>
     </div>
   );
+}
+
+function useIsInViewport(imgRef: RefObject<HTMLImageElement>): boolean {
+  const [isInViewport, setIsInViewport] = useState(false);
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img || typeof IntersectionObserver === "undefined") {
+      setIsInViewport(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => setIsInViewport(Boolean(entries[0]?.isIntersecting)),
+      { threshold: 0 },
+    );
+    observer.observe(img);
+    return () => observer.disconnect();
+  }, [imgRef]);
+
+  return isInViewport;
+}
+
+type ResponsiveImageSourceOptions = {
+  image: ArtworkImage;
+  imgRef: RefObject<HTMLImageElement>;
+  viewportWidth?: number | null;
+  zoom: number;
+  isInViewport: boolean;
+};
+
+function useResponsiveImageSource({
+  image,
+  imgRef,
+  viewportWidth,
+  zoom,
+  isInViewport,
+}: ResponsiveImageSourceOptions): string {
+  const [useHighRes, setUseHighRes] = useState(false);
+
+  const updateResolutionPreference = useCallback(() => {
+    if (!isInViewport) {
+      setUseHighRes(false);
+      return;
+    }
+
+    const img = imgRef.current;
+    if (!img) return;
+
+    const viewportPixels =
+      viewportWidth || window.visualViewport?.width || window.innerWidth || 0;
+    if (viewportPixels === 0) return;
+
+    const renderedWidth = img.getBoundingClientRect?.().width ?? 0;
+    if (renderedWidth === 0) return;
+
+    setUseHighRes(renderedWidth / viewportPixels >= 0.6);
+  }, [imgRef, isInViewport, viewportWidth]);
+
+  useEffect(() => {
+    updateResolutionPreference();
+  }, [zoom, isInViewport, updateResolutionPreference]);
+
+  useEffect(() => {
+    const img = imgRef.current;
+    const observer =
+      typeof ResizeObserver !== "undefined" && img
+        ? new ResizeObserver(() => updateResolutionPreference())
+        : null;
+
+    if (observer && img) {
+      observer.observe(img);
+    }
+
+    const visualViewport = window.visualViewport;
+    visualViewport?.addEventListener("resize", updateResolutionPreference);
+    visualViewport?.addEventListener("scroll", updateResolutionPreference);
+    window.addEventListener("resize", updateResolutionPreference);
+
+    return () => {
+      observer?.disconnect();
+      visualViewport?.removeEventListener("resize", updateResolutionPreference);
+      visualViewport?.removeEventListener("scroll", updateResolutionPreference);
+      window.removeEventListener("resize", updateResolutionPreference);
+    };
+  }, [imgRef, updateResolutionPreference]);
+
+  return useHighRes ? image.largeImageUrl : image.imageUrl;
+}
+
+function useImageLoadLifecycle(
+  imgRef: RefObject<HTMLImageElement>,
+  displaySrc: string,
+  onImageLoadStart?: () => void,
+  onImageLoadEnd?: () => void,
+): void {
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+
+    let started = false;
+    let finished = false;
+
+    const start = () => {
+      if (started) return;
+      started = true;
+      onImageLoadStart?.();
+    };
+
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      onImageLoadEnd?.();
+    };
+
+    if (img.complete && img.naturalWidth > 0) {
+      finish();
+      return;
+    }
+
+    start();
+
+    const handleLoad = () => finish();
+    const handleError = () => finish();
+
+    img.addEventListener("load", handleLoad);
+    img.addEventListener("error", handleError);
+
+    return () => {
+      img.removeEventListener("load", handleLoad);
+      img.removeEventListener("error", handleError);
+      if (started && !finished) {
+        finish();
+      }
+    };
+  }, [displaySrc, imgRef, onImageLoadEnd, onImageLoadStart]);
 }
 
 function HeartIcon(): JSX.Element {
