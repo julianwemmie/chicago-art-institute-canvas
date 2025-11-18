@@ -90,7 +90,7 @@ export default function App(): JSX.Element {
               <p className="welcome-modal__eyebrow">Welcome to</p>
               <h1 className="welcome-modal__title">Institutum Infinitum</h1>
               <p className="welcome-modal__body">
-                Explore the Chicago Institute of Art&apos;s collection of over 150,000 artworks,
+                Explore the Art Institute of Chicago&apos;s collection of over 150,000 artworks,
                 artifacts, and photographs.
               </p>
               <ul className="welcome-modal__list">
