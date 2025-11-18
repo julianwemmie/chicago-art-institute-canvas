@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { PannableGrid, Viewport } from "./components/PannableGrid";
 import { MasonryLayout } from "./lib/masonry";
 import { ActiveCardProvider, createAICImageGenerator } from "./components/AICImageCard";
@@ -7,6 +7,7 @@ const DEFAULT_IMAGE_WIDTH = 450;
 
 export default function App(): JSX.Element {
 
+  const [showWelcome, setShowWelcome] = useState<boolean>(true);
   let imageWidth = DEFAULT_IMAGE_WIDTH;
   const vwPixels = window.visualViewport?.width;
   if (vwPixels && vwPixels < DEFAULT_IMAGE_WIDTH) {
@@ -55,6 +56,10 @@ export default function App(): JSX.Element {
     [layout],
   );
 
+  const handleCloseWelcome = useCallback(() => {
+    setShowWelcome(false);
+  }, []);
+
   return (  
     <ActiveCardProvider>
       <div className="app">
@@ -69,6 +74,35 @@ export default function App(): JSX.Element {
           <div className="loading-indicator" role="status" aria-live="polite">
             <span className="loading-indicator__label">Loading</span>
             <span className="loading-indicator__spinner" aria-hidden="true" />
+          </div>
+        )}
+        {showWelcome && (
+          <div className="welcome-modal__backdrop" role="presentation">
+            <div className="welcome-modal" role="dialog" aria-modal="true" aria-label="Welcome">
+              <button
+                type="button"
+                className="welcome-modal__close"
+                onClick={handleCloseWelcome}
+                aria-label="Close welcome"
+              >
+                ×
+              </button>
+              <p className="welcome-modal__eyebrow">Welcome to</p>
+              <h1 className="welcome-modal__title">Institutum Infinitum</h1>
+              <p className="welcome-modal__body">
+                Explore the Chicago Institute of Art&apos;s collection of over 150,000 artworks,
+                artifacts, and photographs.
+              </p>
+              <ul className="welcome-modal__list">
+                <li>Pan in any direction to discover new items.</li>
+                <li>Click on an image to favorite or view more details.</li>
+              </ul>
+              <div className="welcome-modal__actions">
+                <button type="button" className="welcome-modal__cta" onClick={handleCloseWelcome}>
+                  <span>Explore</span>
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
