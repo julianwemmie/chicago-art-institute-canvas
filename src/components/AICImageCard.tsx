@@ -108,7 +108,7 @@ function AICImageCard({
     if (viewportPixels === 0) return;
     const renderedWidth = img.getBoundingClientRect?.().width ?? 0;
     if (renderedWidth === 0) return;
-    setUseHighRes(renderedWidth / viewportPixels >= 0.5);
+    setUseHighRes(renderedWidth / viewportPixels >= 0.6);
   }, [viewportWidth]);
 
   useEffect(() => {
